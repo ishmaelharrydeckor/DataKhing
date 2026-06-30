@@ -1,0 +1,109 @@
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+model User {
+  id                  String              @id @default(uuid())
+  name                String?
+  email               String              @unique
+  phone               String?             @unique
+  passwordHash        String
+  role                String              @default("CUSTOMER") // CUSTOMER, AGENT, ADMIN
+  walletBalance       Int                 @default(0) // in pesewas
+  referredById        String?
+  referralCode        String              @unique
+  createdAt           DateTime            @default(now())
+  updatedAt           DateTime            @updatedAt
+
+  referredBy          User?               @relation("ReferralTree", fields: [referredById], references: [id], onDelete: Restrict, onUpdate: Cascade)
+  referredUsers       User[]              @relation("ReferralTree")
+
+  orders              Order[]
+  transactions        WalletTransaction[]
+  referralsMade       Referral[]          @relation("ReferralsMade")
+  referralsReceived   Referral[]          @relation("ReferralsReceived")
+  agentApplications   AgentApplication[]
+  auditLogs           AuditLog[]
+}
+
+model Bundle {
+  id                   String      @id @default(uuid())
+  network              String      // MTN, TELECEL, AIRTELTIGO
+  label                String      // e.g. "1GB", "2GB"
+  dataAmountGB         Float
+  supplierCostPesewas  Int         // in pesewas
+  sellPricePesewas     Int         // in pesewas
+  agentPricePesewas    Int         // in pesewas
+  active               Boolean     @default(true)
+  createdAt            DateTime    @default(now())
+  updatedAt            DateTime    @updatedAt
+  orders               Order[]
+}
+
+model Order {
+  id               String       @id @default(uuid())
+  userId           String?      // Nullable for guest purchases
+  bundleId         String
+  recipientPhone   String
+  status           String       @default("PENDING") // PENDING, PROCESSING, DELIVERED, FAILED, REFUNDED
+  supplierOrderRef String?      @unique
+  paystackRef      String?      @unique
+  amountPaid       Int          // in pesewas
+  createdAt        DateTime     @default(now())
+  updatedAt        DateTime     @updatedAt
+
+  user             User?        @relation(fields: [userId], references: [id])
+  bundle           Bundle       @relation(fields: [bundleId], references: [id])
+  walletTransactions WalletTransaction[]
+}
+
+model WalletTransaction {
+  id               String          @id @default(uuid())
+  userId           String
+  type             String          // TOPUP, PURCHASE, REFERRAL_CREDIT, PAYOUT
+  amountPesewas    Int             // can be positive or negative
+  balanceAfter     Int             // balance after transaction
+  referenceOrderId String?
+  createdAt        DateTime        @default(now())
+
+  user             User            @relation(fields: [userId], references: [id])
+  order            Order?          @relation(fields: [referenceOrderId], references: [id])
+}
+
+model Referral {
+  id             String             @id @default(uuid())
+  referrerId     String
+  referredUserId String             @unique
+  rewardType     String             @default("CASHBACK") // CASHBACK, DISCOUNT
+  status         String             @default("PENDING") // PENDING, COMPLETED
+  createdAt      DateTime           @default(now())
+
+  referrer       User               @relation("ReferralsMade", fields: [referrerId], references: [id])
+  referredUser   User               @relation("ReferralsReceived", fields: [referredUserId], references: [id])
+}
+
+model AgentApplication {
+  id        String   @id @default(uuid())
+  userId    String   @unique
+  status    String   @default("PENDING") // PENDING, APPROVED, REJECTED
+  businessName String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user      User     @relation(fields: [userId], references: [id])
+}
+
+model AuditLog {
+  id        String   @id @default(uuid())
+  userId    String?  // Admin or user doing the action
+  action    String   // e.g. "ADJUST_WALLET", "UPDATE_PRICE", "OVERRIDE_ORDER"
+  details   String   // JSON string of details
+  createdAt DateTime @default(now())
+
+  user      User?    @relation(fields: [userId], references: [id])
+}
