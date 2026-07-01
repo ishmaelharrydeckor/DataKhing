@@ -1,0 +1,52 @@
+name: Neon Database Backup
+
+on:
+  schedule:
+    - cron: '0 2 * * *' # Run daily at 2:00 AM UTC
+  workflow_dispatch: # Enable manual triggers
+
+jobs:
+  backup:
+    name: Run pg_dump & Upload to S3/R2
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Install PostgreSQL Client
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y postgresql-client
+
+      - name: Perform pg_dump
+        run: |
+          TIMESTAMP=$(date -u +%Y-%m-%dT%H-%M-%SZ)
+          FILE_NAME="datakhing-backup-${TIMESTAMP}.bak"
+          echo "FILE_NAME=${FILE_NAME}" >> $GITHUB_ENV
+          
+          # Run pg_dump using the unpooled connection string
+          pg_dump -Fc "$DATABASE_URL_UNPOOLED" > "$FILE_NAME"
+        env:
+          DATABASE_URL_UNPOOLED: ${{ secrets.DATABASE_URL_UNPOOLED }}
+
+      - name: Upload Backup to S3-compatible Storage
+        run: |
+          # Configure AWS CLI credentials
+          aws configure set aws_access_key_id "$ACCESS_KEY"
+          aws configure set aws_secret_access_key "$SECRET_KEY"
+          
+          # Check if custom endpoint exists (for R2 or B2)
+          if [ -n "$ENDPOINT" ]; then
+            aws s3 cp "$FILE_NAME" "s3://$BUCKET/$FILE_NAME" --endpoint-url "$ENDPOINT"
+          else
+            aws s3 cp "$FILE_NAME" "s3://$BUCKET/$FILE_NAME"
+          fi
+        env:
+          ACCESS_KEY: ${{ secrets.BACKUP_STORAGE_ACCESS_KEY }}
+          SECRET_KEY: ${{ secrets.BACKUP_STORAGE_SECRET_KEY }}
+          BUCKET: ${{ secrets.BACKUP_STORAGE_BUCKET }}
+          ENDPOINT: ${{ secrets.BACKUP_STORAGE_ENDPOINT }}
+
+      - name: Prune Temporary Files
+        run: rm -f *.bak
