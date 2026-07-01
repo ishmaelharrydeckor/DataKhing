@@ -46,20 +46,30 @@ model Bundle {
 }
 
 model Order {
-  id               String       @id @default(uuid())
-  userId           String?      // Nullable for guest purchases
-  bundleId         String
-  recipientPhone   String
-  status           String       @default("PENDING") // PENDING, PROCESSING, DELIVERED, FAILED, REFUNDED
-  supplierOrderRef String?      @unique
-  paystackRef      String?      @unique
-  amountPaid       Int          // in pesewas
-  createdAt        DateTime     @default(now())
-  updatedAt        DateTime     @updatedAt
+  id                 String       @id @default(uuid())
+  userId             String?      // Nullable for guest purchases
+  bundleId           String
+  recipientPhone     String
+  status             String       @default("PENDING") // PENDING, PROCESSING, DELIVERED, FAILED, REFUNDED
+  supplierOrderRef   String?      @unique
+  supplierPurchaseId String?      @unique
+  idempotencyKey     String?      @unique
+  paystackRef        String?      @unique
+  amountPaid         Int          // in pesewas
+  createdAt          DateTime     @default(now())
+  updatedAt          DateTime     @updatedAt
 
-  user             User?        @relation(fields: [userId], references: [id])
-  bundle           Bundle       @relation(fields: [bundleId], references: [id])
+  user               User?        @relation(fields: [userId], references: [id])
+  bundle             Bundle       @relation(fields: [bundleId], references: [id])
   walletTransactions WalletTransaction[]
+}
+
+model SupplierAccount {
+  id                  String   @id @default("default")
+  balancePesewas      Int      @default(0)
+  rateLimitRemaining  Int      @default(0)
+  rateLimitResetAt    DateTime @default(now())
+  updatedAt           DateTime @updatedAt
 }
 
 model WalletTransaction {
