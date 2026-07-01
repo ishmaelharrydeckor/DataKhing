@@ -1,6 +1,7 @@
 import { createHmac } from "crypto";
 import { db } from "@/lib/db";
 import { revalidatePath } from "next/cache";
+import { checkAndCreateCommission, checkAndReverseCommission } from "@/app/actions/commission";
 
 export async function POST(req: Request) {
   try {
@@ -55,6 +56,7 @@ export async function POST(req: Request) {
         where: { id: order.id },
         data: { status: finalStatus },
       });
+      await checkAndCreateCommission(order.id);
     } else if (event === "order.failed" || event === "order.refunded") {
       finalStatus = event === "order.failed" ? "FAILED" : "REFUNDED";
 
@@ -110,6 +112,8 @@ export async function POST(req: Request) {
           data: { status: finalStatus },
         });
       }
+
+      await checkAndReverseCommission(order.id);
     }
 
     revalidatePath(`/order/${order.id}`);

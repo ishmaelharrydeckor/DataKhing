@@ -29,6 +29,8 @@ model User {
   referralsReceived   Referral[]          @relation("ReferralsReceived")
   agentApplications   AgentApplication[]
   auditLogs           AuditLog[]
+  commissions         Commission[]        @relation("AgentCommissions")
+  payoutBatches       AgentPayoutBatch[]  @relation("AgentPayouts")
 }
 
 model Bundle {
@@ -62,6 +64,7 @@ model Order {
   user               User?        @relation(fields: [userId], references: [id])
   bundle             Bundle       @relation(fields: [bundleId], references: [id])
   walletTransactions WalletTransaction[]
+  commissions        Commission[]
 }
 
 model SupplierAccount {
@@ -116,4 +119,38 @@ model AuditLog {
   createdAt DateTime @default(now())
 
   user      User?    @relation(fields: [userId], references: [id])
+}
+
+model Commission {
+  id                      String            @id @default(uuid())
+  agentUserId             String
+  orderId                 String
+  salePricePesewas        Int
+  commissionRatePercent   Int
+  commissionAmountPesewas Int
+  status                  String            @default("PENDING") // PENDING, APPROVED, PAID, REVERSED
+  payoutMethod            String?           // manual_momo, manual_bank, paystack_transfer
+  payoutReference         String?
+  notes                   String?
+  payoutBatchId           String?
+  createdAt               DateTime          @default(now())
+  paidAt                  DateTime?
+  paidByAdminId           String?
+
+  agentUser               User              @relation("AgentCommissions", fields: [agentUserId], references: [id])
+  order                   Order             @relation(fields: [orderId], references: [id])
+  payoutBatch             AgentPayoutBatch? @relation(fields: [payoutBatchId], references: [id])
+}
+
+model AgentPayoutBatch {
+  id                 String       @id @default(uuid())
+  agentUserId        String
+  totalAmountPesewas Int
+  status             String       @default("PENDING") // PENDING, COMPLETED
+  createdAt          DateTime     @default(now())
+  completedAt        DateTime?
+  createdByAdminId   String?
+
+  agentUser          User         @relation("AgentPayouts", fields: [agentUserId], references: [id])
+  commissions        Commission[]
 }

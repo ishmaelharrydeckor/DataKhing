@@ -2,7 +2,7 @@ import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import Link from "next/link";
-import { Settings, ShoppingBag, Users, HelpCircle, LayoutDashboard, Award } from "lucide-react";
+import { Settings, ShoppingBag, Users, HelpCircle, LayoutDashboard, Award, Coins } from "lucide-react";
 import { SITE_CONFIG } from "@/lib/site-config";
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
@@ -64,6 +64,13 @@ export default async function AdminLayout({ children }: { children: React.ReactN
           >
             <Award className="w-4 h-4 text-slate-400" />
             Agent Applications
+          </Link>
+          <Link
+            href="/admin/commissions"
+            className="flex items-center gap-2 py-3 px-5 rounded-xl text-sm font-semibold hover:bg-slate-900 transition text-slate-300 active:bg-slate-850"
+          >
+            <Coins className="w-4 h-4 text-slate-400" />
+            Commissions
           </Link>
         </div>
 

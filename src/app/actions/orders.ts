@@ -7,6 +7,7 @@ import { validatePhoneNumber, getNetworkFromPhone, SITE_CONFIG } from "@/lib/sit
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
+import { checkAndCreateCommission, checkAndReverseCommission } from "./commission";
 
 // Reward configuration (Ghanaian reseller details)
 const REFERRAL_CASHBACK_PERCENT = 5; // 5% cashback to referrer
@@ -110,13 +111,19 @@ export async function createOrderAction(formData: {
           order.id
         );
 
+        const statusVal = placementResult.status === "PENDING" ? "PROCESSING" : placementResult.status;
+
         await db.order.update({
           where: { id: order.id },
           data: {
             supplierOrderRef: placementResult.supplierOrderRef,
-            status: placementResult.status === "PENDING" ? "PROCESSING" : placementResult.status,
+            status: statusVal,
           },
         });
+
+        if (statusVal === "DELIVERED") {
+          await checkAndCreateCommission(order.id);
+        }
 
         // Trigger referral rewards if the user was referred
         const freshUserObj = await db.user.findUnique({ where: { id: userId }, select: { referredById: true } });
@@ -241,6 +248,10 @@ export async function verifyOrderPaymentAction(paystackRef: string) {
           supplierOrderRef: placementResult.supplierOrderRef,
         },
       });
+
+      if (finalStatus === "DELIVERED") {
+        await checkAndCreateCommission(order.id);
+      }
 
       // 2. Wallet transaction mapping (record transaction as purchase)
       if (order.userId) {
@@ -425,6 +436,13 @@ export async function pollOrderStatusAction(orderId: string) {
           where: { id: orderId },
           data: { status: currentStatus },
         });
+
+        if (currentStatus === "DELIVERED") {
+          await checkAndCreateCommission(orderId);
+        } else if (currentStatus === "FAILED") {
+          await checkAndReverseCommission(orderId);
+        }
+
         return { success: true, status: updated.status };
       }
     }
