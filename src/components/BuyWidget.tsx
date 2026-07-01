@@ -40,9 +40,9 @@ export default function BuyWidget({ initialBundles }: { initialBundles: Bundle[]
     if (urlRef) {
       setReferrerCode(urlRef);
       // Also cache it
-      localStorage.setItem("datahub_referrer", urlRef);
+      localStorage.setItem("datakhing_referrer", urlRef);
     } else {
-      const cached = localStorage.getItem("datahub_referrer");
+      const cached = localStorage.getItem("datakhing_referrer");
       if (cached) setReferrerCode(cached);
     }
   }, [searchParams]);

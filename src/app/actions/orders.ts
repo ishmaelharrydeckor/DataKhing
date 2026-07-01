@@ -54,7 +54,7 @@ export async function createOrderAction(formData: {
     }
 
     // 5. Determine email for payment receipt
-    const customerEmail = session?.user?.email || formData.guestEmail || "guest@datahub.com";
+    const customerEmail = session?.user?.email || formData.guestEmail || "guest@datakhing.com";
 
     // 6. Handle Wallet Payment
     if (formData.paymentMethod === "WALLET") {

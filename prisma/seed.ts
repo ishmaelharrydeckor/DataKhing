@@ -24,7 +24,7 @@ async function main() {
   const admin = await prisma.user.create({
     data: {
       name: "Default Admin",
-      email: "admin@datahub.com",
+      email: "admin@datakhing.com",
       phone: "0240000001",
       passwordHash: adminPasswordHash,
       role: "ADMIN",
@@ -36,7 +36,7 @@ async function main() {
   const agent = await prisma.user.create({
     data: {
       name: "Default Agent",
-      email: "agent@datahub.com",
+      email: "agent@datakhing.com",
       phone: "0240000002",
       passwordHash: agentPasswordHash,
       role: "AGENT",
@@ -48,7 +48,7 @@ async function main() {
   const customer = await prisma.user.create({
     data: {
       name: "Default Customer",
-      email: "customer@datahub.com",
+      email: "customer@datakhing.com",
       phone: "0240000003",
       passwordHash: customerPasswordHash,
       role: "CUSTOMER",

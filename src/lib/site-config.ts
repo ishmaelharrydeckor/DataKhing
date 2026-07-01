@@ -1,7 +1,7 @@
 export const SITE_CONFIG = {
-  SITE_NAME: "DataHub",
+  SITE_NAME: "DataKhing",
   SITE_TAGLINE: "Your Premium Mobile Data Bundle Partner in Ghana",
-  SUPPORT_EMAIL: "support@datahub.com",
+  SUPPORT_EMAIL: "support@datakhing.com",
   SUPPORT_PHONE: "+233 24 000 0000",
   LOGO_PATH: "/logo.png",
   CURRENCY_CODE: "GHS",

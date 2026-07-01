@@ -100,7 +100,7 @@ export default async function LandingPage() {
                 ))}
               </div>
               <p className="text-slate-300 text-sm italic">
-                &quot;DataHub has completely changed how I buy MTN bundles. It takes less than a minute and is so much cheaper than dialling shortcodes.&quot;
+                &quot;DataKhing has completely changed how I buy MTN bundles. It takes less than a minute and is so much cheaper than dialling shortcodes.&quot;
               </p>
               <div className="mt-4 text-xs font-semibold text-white">— Kwabena A., Accra</div>
             </div>

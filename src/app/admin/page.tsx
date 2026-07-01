@@ -137,15 +137,15 @@ export default async function AdminOverviewPage() {
             <div className="space-y-1.5 text-xs text-slate-400">
               <div className="flex justify-between">
                 <span>Admin Login:</span>
-                <span className="text-white font-semibold">admin@datahub.com</span>
+                <span className="text-white font-semibold">admin@datakhing.com</span>
               </div>
               <div className="flex justify-between">
                 <span>Agent Login:</span>
-                <span className="text-white font-semibold">agent@datahub.com</span>
+                <span className="text-white font-semibold">agent@datakhing.com</span>
               </div>
               <div className="flex justify-between">
                 <span>Customer Login:</span>
-                <span className="text-white font-semibold">customer@datahub.com</span>
+                <span className="text-white font-semibold">customer@datakhing.com</span>
               </div>
             </div>
           </div>
