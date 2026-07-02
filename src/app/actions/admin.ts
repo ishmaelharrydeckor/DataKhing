@@ -33,7 +33,7 @@ export async function adjustUserWalletAction(userId: string, amountPesewas: numb
           type: "TOPUP", // treated as admin topup
           amountPesewas,
           balanceAfter: u.walletBalance,
-          referenceOrderId: `ADMIN-ADJUST-${Date.now()}`,
+          notes: `ADMIN-ADJUST: ${reason || "No reason provided"}`,
         },
       });
 

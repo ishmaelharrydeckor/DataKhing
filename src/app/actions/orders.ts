@@ -365,7 +365,7 @@ export async function verifyWalletTopupAction(reference: string, amountPesewas: 
       where: {
         userId,
         type: "TOPUP",
-        referenceOrderId: reference, // we reuse this field for storage
+        paymentRef: reference,
       },
     });
 
@@ -391,7 +391,7 @@ export async function verifyWalletTopupAction(reference: string, amountPesewas: 
             type: "TOPUP",
             amountPesewas,
             balanceAfter: u.walletBalance,
-            referenceOrderId: reference,
+            paymentRef: reference,
           },
         });
 
