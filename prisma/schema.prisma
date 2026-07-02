@@ -1,125 +1,118 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
 datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
 }
 
-generator client {
-  provider = "prisma-client-js"
-}
-
 model User {
-  id                  String              @id @default(uuid())
-  name                String?
-  email               String              @unique
-  phone               String?             @unique
-  passwordHash        String
-  role                String              @default("CUSTOMER") // CUSTOMER, AGENT, ADMIN
-  walletBalance       Int                 @default(0) // in pesewas
-  referredById        String?
-  referralCode        String              @unique
-  createdAt           DateTime            @default(now())
-  updatedAt           DateTime            @updatedAt
-
-  referredBy          User?               @relation("ReferralTree", fields: [referredById], references: [id], onDelete: Restrict, onUpdate: Cascade)
-  referredUsers       User[]              @relation("ReferralTree")
-
-  orders              Order[]
-  transactions        WalletTransaction[]
-  referralsMade       Referral[]          @relation("ReferralsMade")
-  referralsReceived   Referral[]          @relation("ReferralsReceived")
-  agentApplications   AgentApplication[]
-  auditLogs           AuditLog[]
-  commissions         Commission[]        @relation("AgentCommissions")
-  payoutBatches       AgentPayoutBatch[]  @relation("AgentPayouts")
+  id                String              @id @default(uuid())
+  name              String?
+  email             String              @unique
+  phone             String?             @unique
+  passwordHash      String
+  role              String              @default("CUSTOMER")
+  walletBalance     Int                 @default(0)
+  referredById      String?
+  referralCode      String              @unique
+  createdAt         DateTime            @default(now())
+  updatedAt         DateTime            @updatedAt
+  agentApplications AgentApplication?
+  payoutBatches     AgentPayoutBatch[]  @relation("AgentPayouts")
+  auditLogs         AuditLog[]
+  commissions       Commission[]        @relation("AgentCommissions")
+  orders            Order[]
+  referralsReceived Referral?           @relation("ReferralsReceived")
+  referralsMade     Referral[]          @relation("ReferralsMade")
+  referredBy        User?               @relation("ReferralTree", fields: [referredById], references: [id], onDelete: Restrict)
+  referredUsers     User[]              @relation("ReferralTree")
+  transactions      WalletTransaction[]
 }
 
 model Bundle {
-  id                   String      @id @default(uuid())
-  network              String      // MTN, TELECEL, AIRTELTIGO
-  label                String      // e.g. "1GB", "2GB"
-  dataAmountGB         Float
-  supplierCostPesewas  Int         // in pesewas
-  sellPricePesewas     Int         // in pesewas
-  agentPricePesewas    Int         // in pesewas
-  active               Boolean     @default(true)
-  createdAt            DateTime    @default(now())
-  updatedAt            DateTime    @updatedAt
-  orders               Order[]
+  id                  String   @id @default(uuid())
+  network             String
+  label               String
+  dataAmountGB        Float
+  supplierCostPesewas Int
+  sellPricePesewas    Int
+  agentPricePesewas   Int
+  active              Boolean  @default(true)
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+  orders              Order[]
 }
 
 model Order {
-  id                 String       @id @default(uuid())
-  userId             String?      // Nullable for guest purchases
+  id                 String              @id @default(uuid())
+  userId             String?
   bundleId           String
   recipientPhone     String
-  status             String       @default("PENDING") // PENDING, PROCESSING, DELIVERED, FAILED, REFUNDED
-  supplierOrderRef   String?      @unique
-  supplierPurchaseId String?      @unique
-  idempotencyKey     String?      @unique
-  paystackRef        String?      @unique
-  amountPaid         Int          // in pesewas
-  createdAt          DateTime     @default(now())
-  updatedAt          DateTime     @updatedAt
-
-  user               User?        @relation(fields: [userId], references: [id])
-  bundle             Bundle       @relation(fields: [bundleId], references: [id])
-  walletTransactions WalletTransaction[]
+  status             String              @default("PENDING")
+  supplierOrderRef   String?             @unique
+  supplierPurchaseId String?             @unique
+  idempotencyKey     String?             @unique
+  paystackRef        String?             @unique
+  amountPaid         Int
+  createdAt          DateTime            @default(now())
+  updatedAt          DateTime            @updatedAt
   commissions        Commission[]
+  bundle             Bundle              @relation(fields: [bundleId], references: [id])
+  user               User?               @relation(fields: [userId], references: [id])
+  walletTransactions WalletTransaction[]
 }
 
 model SupplierAccount {
-  id                  String   @id @default("default")
-  balancePesewas      Int      @default(0)
-  rateLimitRemaining  Int      @default(0)
-  rateLimitResetAt    DateTime @default(now())
-  updatedAt           DateTime @updatedAt
+  id                 String   @id @default("default")
+  balancePesewas     Int      @default(0)
+  rateLimitRemaining Int      @default(0)
+  rateLimitResetAt   DateTime @default(now())
+  updatedAt          DateTime @updatedAt
 }
 
 model WalletTransaction {
-  id               String          @id @default(uuid())
+  id               String   @id @default(uuid())
   userId           String
-  type             String          // TOPUP, PURCHASE, REFERRAL_CREDIT, PAYOUT
-  amountPesewas    Int             // can be positive or negative
-  balanceAfter     Int             // balance after transaction
+  type             String
+  amountPesewas    Int
+  balanceAfter     Int
   referenceOrderId String?
-  paymentRef       String?
+  createdAt        DateTime @default(now())
   notes            String?
-  createdAt        DateTime        @default(now())
-
-  user             User            @relation(fields: [userId], references: [id])
-  order            Order?          @relation(fields: [referenceOrderId], references: [id])
+  paymentRef       String?
+  order            Order?   @relation(fields: [referenceOrderId], references: [id])
+  user             User     @relation(fields: [userId], references: [id])
 }
 
 model Referral {
-  id             String             @id @default(uuid())
+  id             String   @id @default(uuid())
   referrerId     String
-  referredUserId String             @unique
-  rewardType     String             @default("CASHBACK") // CASHBACK, DISCOUNT
-  status         String             @default("PENDING") // PENDING, COMPLETED
-  createdAt      DateTime           @default(now())
-
-  referrer       User               @relation("ReferralsMade", fields: [referrerId], references: [id])
-  referredUser   User               @relation("ReferralsReceived", fields: [referredUserId], references: [id])
+  referredUserId String   @unique
+  rewardType     String   @default("CASHBACK")
+  status         String   @default("PENDING")
+  createdAt      DateTime @default(now())
+  referredUser   User     @relation("ReferralsReceived", fields: [referredUserId], references: [id])
+  referrer       User     @relation("ReferralsMade", fields: [referrerId], references: [id])
 }
 
 model AgentApplication {
-  id        String   @id @default(uuid())
-  userId    String   @unique
-  status    String   @default("PENDING") // PENDING, APPROVED, REJECTED
+  id           String   @id @default(uuid())
+  userId       String   @unique
+  status       String   @default("PENDING")
   businessName String?
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
-
-  user      User     @relation(fields: [userId], references: [id])
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  user         User     @relation(fields: [userId], references: [id])
 }
 
 model AuditLog {
   id        String   @id @default(uuid())
-  userId    String?  // Admin or user doing the action
-  action    String   // e.g. "ADJUST_WALLET", "UPDATE_PRICE", "OVERRIDE_ORDER"
-  details   String   // JSON string of details
+  userId    String?
+  action    String
+  details   String
   createdAt DateTime @default(now())
-
   user      User?    @relation(fields: [userId], references: [id])
 }
 
@@ -130,15 +123,14 @@ model Commission {
   salePricePesewas        Int
   commissionRatePercent   Int
   commissionAmountPesewas Int
-  status                  String            @default("PENDING") // PENDING, APPROVED, PAID, REVERSED
-  payoutMethod            String?           // manual_momo, manual_bank, paystack_transfer
+  status                  String            @default("PENDING")
+  payoutMethod            String?
   payoutReference         String?
   notes                   String?
   payoutBatchId           String?
   createdAt               DateTime          @default(now())
   paidAt                  DateTime?
   paidByAdminId           String?
-
   agentUser               User              @relation("AgentCommissions", fields: [agentUserId], references: [id])
   order                   Order             @relation(fields: [orderId], references: [id])
   payoutBatch             AgentPayoutBatch? @relation(fields: [payoutBatchId], references: [id])
@@ -148,11 +140,10 @@ model AgentPayoutBatch {
   id                 String       @id @default(uuid())
   agentUserId        String
   totalAmountPesewas Int
-  status             String       @default("PENDING") // PENDING, COMPLETED
+  status             String       @default("PENDING")
   createdAt          DateTime     @default(now())
   completedAt        DateTime?
   createdByAdminId   String?
-
   agentUser          User         @relation("AgentPayouts", fields: [agentUserId], references: [id])
   commissions        Commission[]
 }

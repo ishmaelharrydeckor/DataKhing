@@ -377,11 +377,12 @@ export async function verifyWalletTopupAction(reference: string, amountPesewas: 
     const verification = await paymentClient.verifyTransaction(reference);
 
     if (verification.success) {
+      const finalAmount = verification.amountPaidPesewas > 0 ? verification.amountPaidPesewas : amountPesewas;
       const updatedUser = await db.$transaction(async (tx) => {
         const u = await tx.user.update({
           where: { id: userId },
           data: {
-            walletBalance: { increment: amountPesewas },
+            walletBalance: { increment: finalAmount },
           },
         });
 
@@ -389,7 +390,7 @@ export async function verifyWalletTopupAction(reference: string, amountPesewas: 
           data: {
             userId,
             type: "TOPUP",
-            amountPesewas,
+            amountPesewas: finalAmount,
             balanceAfter: u.walletBalance,
             paymentRef: reference,
           },
