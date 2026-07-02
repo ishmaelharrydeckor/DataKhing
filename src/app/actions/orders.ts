@@ -480,3 +480,29 @@ export async function applyForAgentAction(businessName: string) {
     return { success: false, error: error.message || "Failed to submit application." };
   }
 }
+
+export async function archiveWalletTransactionAction(txId: string) {
+  try {
+    const session = await getServerSession(authOptions);
+    if (!session?.user) return { success: false, error: "Authentication required." };
+    const userId = (session.user as any).id;
+
+    const tx = await db.walletTransaction.findUnique({
+      where: { id: txId },
+    });
+
+    if (!tx || tx.userId !== userId) {
+      return { success: false, error: "Transaction not found." };
+    }
+
+    await db.walletTransaction.update({
+      where: { id: txId },
+      data: { isArchived: true },
+    });
+
+    return { success: true };
+  } catch (error: any) {
+    console.error("archiveWalletTransactionAction error:", error);
+    return { success: false, error: error.message || "Failed to clear transaction." };
+  }
+}

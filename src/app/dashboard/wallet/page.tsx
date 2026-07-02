@@ -3,6 +3,7 @@ import { authOptions } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { formatPesewas } from "@/lib/site-config";
 import WalletTopupForm from "@/components/WalletTopupForm";
+import ArchiveTransactionButton from "@/components/ArchiveTransactionButton";
 import { ArrowDownLeft, ArrowUpRight, Award, BadgeDollarSign, Wallet } from "lucide-react";
 
 export const revalidate = 0;
@@ -17,7 +18,7 @@ export default async function WalletPage() {
   });
 
   const transactions = await db.walletTransaction.findMany({
-    where: { userId },
+    where: { userId, isArchived: false },
     orderBy: { createdAt: "desc" },
     take: 15,
   });
@@ -100,15 +101,18 @@ export default async function WalletPage() {
                   </div>
                 </div>
 
-                <div className="text-right">
-                  <span className={`text-sm font-bold block ${
-                    tx.amountPesewas > 0 ? "text-emerald-400" : "text-slate-200"
-                  }`}>
-                    {details.amountFormatted}
-                  </span>
-                  <span className="text-[10px] text-slate-500 block mt-0.5">
-                    {new Date(tx.createdAt).toLocaleDateString()}
-                  </span>
+                <div className="flex items-center gap-4">
+                  <div className="text-right">
+                    <span className={`text-sm font-bold block ${
+                      tx.amountPesewas > 0 ? "text-emerald-400" : "text-slate-200"
+                    }`}>
+                      {details.amountFormatted}
+                    </span>
+                    <span className="text-[10px] text-slate-500 block mt-0.5">
+                      {new Date(tx.createdAt).toLocaleDateString()}
+                    </span>
+                  </div>
+                  <ArchiveTransactionButton txId={tx.id} />
                 </div>
               </div>
             );

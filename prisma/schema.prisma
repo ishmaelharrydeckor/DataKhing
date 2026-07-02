@@ -79,6 +79,7 @@ model WalletTransaction {
   amountPesewas    Int
   balanceAfter     Int
   referenceOrderId String?
+  isArchived       Boolean  @default(false)
   createdAt        DateTime @default(now())
   notes            String?
   paymentRef       String?
