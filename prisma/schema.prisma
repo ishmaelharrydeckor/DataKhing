@@ -19,10 +19,7 @@ model User {
   referralCode      String              @unique
   createdAt         DateTime            @default(now())
   updatedAt         DateTime            @updatedAt
-  agentApplications AgentApplication?
-  payoutBatches     AgentPayoutBatch[]  @relation("AgentPayouts")
   auditLogs         AuditLog[]
-  commissions       Commission[]        @relation("AgentCommissions")
   orders            Order[]
   referralsReceived Referral?           @relation("ReferralsReceived")
   referralsMade     Referral[]          @relation("ReferralsMade")
@@ -32,17 +29,18 @@ model User {
 }
 
 model Bundle {
-  id                  String   @id @default(uuid())
+  id                  String         @id @default(uuid())
   network             String
   label               String
   dataAmountGB        Float
   supplierCostPesewas Int
   sellPricePesewas    Int
   agentPricePesewas   Int
-  active              Boolean  @default(true)
-  createdAt           DateTime @default(now())
-  updatedAt           DateTime @updatedAt
+  active              Boolean        @default(true)
+  createdAt           DateTime       @default(now())
+  updatedAt           DateTime       @updatedAt
   orders              Order[]
+  storePricing        StorePricing[]
 }
 
 model Order {
@@ -58,10 +56,12 @@ model Order {
   amountPaid         Int
   createdAt          DateTime            @default(now())
   updatedAt          DateTime            @updatedAt
-  commissions        Commission[]
   bundle             Bundle              @relation(fields: [bundleId], references: [id])
   user               User?               @relation(fields: [userId], references: [id])
   walletTransactions WalletTransaction[]
+  storeId            String?
+  store              Store?              @relation(fields: [storeId], references: [id])
+  ledgers            Ledger[]
 }
 
 model SupplierAccount {
@@ -98,16 +98,6 @@ model Referral {
   referrer       User     @relation("ReferralsMade", fields: [referrerId], references: [id])
 }
 
-model AgentApplication {
-  id           String   @id @default(uuid())
-  userId       String   @unique
-  status       String   @default("PENDING")
-  businessName String?
-  createdAt    DateTime @default(now())
-  updatedAt    DateTime @updatedAt
-  user         User     @relation(fields: [userId], references: [id])
-}
-
 model AuditLog {
   id        String   @id @default(uuid())
   userId    String?
@@ -117,34 +107,83 @@ model AuditLog {
   user      User?    @relation(fields: [userId], references: [id])
 }
 
-model Commission {
-  id                      String            @id @default(uuid())
-  agentUserId             String
-  orderId                 String
-  salePricePesewas        Int
-  commissionRatePercent   Int
-  commissionAmountPesewas Int
-  status                  String            @default("PENDING")
-  payoutMethod            String?
-  payoutReference         String?
-  notes                   String?
-  payoutBatchId           String?
-  createdAt               DateTime          @default(now())
-  paidAt                  DateTime?
-  paidByAdminId           String?
-  agentUser               User              @relation("AgentCommissions", fields: [agentUserId], references: [id])
-  order                   Order             @relation(fields: [orderId], references: [id])
-  payoutBatch             AgentPayoutBatch? @relation(fields: [payoutBatchId], references: [id])
+model Store {
+  id           String         @id @default(uuid())
+  ownerUserId  String
+  parentStoreId String?
+  slug         String         @unique
+  name         String
+  status       String         @default("PENDING") // ACTIVE | SUSPENDED | PENDING
+  storeType    String         @default("AGENT") // ROOT | AGENT
+  displayName  String
+  logoUrl      String?
+  primaryColor String?
+  supportEmail String?
+  contactPhone String?
+  footerText   String?
+  ancestorPath String         @default("root")
+  createdAt    DateTime       @default(now())
+  orders       Order[]
+  parentStore  Store?         @relation("StoreHierarchy", fields: [parentStoreId], references: [id], onDelete: Restrict)
+  childStores  Store[]        @relation("StoreHierarchy")
+  storePricing StorePricing[]
+  ledgers      Ledger[]
+  withdrawals  Withdrawal[]
 }
 
-model AgentPayoutBatch {
-  id                 String       @id @default(uuid())
-  agentUserId        String
-  totalAmountPesewas Int
-  status             String       @default("PENDING")
-  createdAt          DateTime     @default(now())
+model StorePricing {
+  id                       String   @id @default(uuid())
+  storeId                  String
+  bundleId                 String
+  priceForCustomersPesewas Int
+  priceForSubAgentsPesewas Int
+  updatedAt                DateTime @updatedAt
+  store                    Store    @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  bundle                   Bundle   @relation(fields: [bundleId], references: [id], onDelete: Cascade)
+
+  @@unique([storeId, bundleId])
+}
+
+model AgentApplication {
+  id                    String    @id @default(uuid())
+  applicantUserId       String
+  parentStoreId         String
+  storeName             String
+  applicationFeePesewas Int
+  paymentRef            String?
+  status                String    @default("PENDING_PAYMENT") // PENDING_PAYMENT | PENDING_REVIEW | APPROVED | REJECTED
+  reviewedByUserId      String?
+  reviewedAt            DateTime?
+  createdAt             DateTime  @default(now())
+  ledgers               Ledger[]
+}
+
+model Ledger {
+  id               String            @id @default(uuid())
+  storeId          String
+  orderId          String?
+  applicationId    String?
+  tierDepth        Int
+  buyPricePesewas  Int
+  sellPricePesewas Int
+  amountPesewas    Int
+  status           String            @default("AVAILABLE") // AVAILABLE | WITHDRAWN
+  createdAt        DateTime          @default(now())
+  store            Store             @relation(fields: [storeId], references: [id], onDelete: Cascade)
+  order            Order?            @relation(fields: [orderId], references: [id])
+  application      AgentApplication? @relation(fields: [applicationId], references: [id])
+}
+
+model Withdrawal {
+  id                 String    @id @default(uuid())
+  storeId            String
+  amountPesewas      Int
+  ledgerIds          String[] // Storing ledger IDs covered
+  status             String    @default("PENDING") // PENDING | COMPLETED | FAILED
+  payoutMethod       String    @default("MANUAL_MOMO") // MANUAL_MOMO | MANUAL_BANK | PAYSTACK_TRANSFER
+  payoutReference    String?
+  requestedAt        DateTime  @default(now())
   completedAt        DateTime?
-  createdByAdminId   String?
-  agentUser          User         @relation("AgentPayouts", fields: [agentUserId], references: [id])
-  commissions        Commission[]
+  completedByUserId  String?
+  store              Store     @relation(fields: [storeId], references: [id], onDelete: Cascade)
 }

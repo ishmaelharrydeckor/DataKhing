@@ -7,7 +7,7 @@ import { validatePhoneNumber, getNetworkFromPhone, SITE_CONFIG } from "@/lib/sit
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
-import { checkAndCreateCommission, checkAndReverseCommission } from "./commission";
+import { createCascadingLedgerEntries } from "@/lib/ledger";
 
 // Reward configuration (Ghanaian reseller details)
 const REFERRAL_CASHBACK_PERCENT = 5; // 5% cashback to referrer
@@ -18,6 +18,7 @@ export async function createOrderAction(formData: {
   paymentMethod: "WALLET" | "PAYSTACK";
   guestEmail?: string;
   referrerCode?: string;
+  storeSlug?: string;
 }) {
   try {
     const session = await getServerSession(authOptions);
@@ -46,18 +47,55 @@ export async function createOrderAction(formData: {
       return { success: false, error: "Invalid phone number format." };
     }
 
-    // 4. Calculate Sell Price based on User Tier
-    let finalPrice = bundle.sellPricePesewas;
-    if (userRole === "AGENT") {
-      finalPrice = bundle.agentPricePesewas;
-    } else if (userRole === "ADMIN") {
-      finalPrice = bundle.supplierCostPesewas; // Admin gets at cost for testing/convenience
+    // 4. Determine associated store
+    let storeId: string | null = null;
+    if (formData.storeSlug) {
+      const store = await db.store.findUnique({
+        where: { slug: formData.storeSlug },
+      });
+      if (store) {
+        storeId = store.id;
+      }
     }
 
-    // 5. Determine email for payment receipt
+    if (!storeId) {
+      const rootStore = await db.store.findFirst({
+        where: { storeType: "ROOT" },
+      });
+      storeId = rootStore?.id || null;
+    }
+
+    // 5. Calculate Sell Price based on Store/User pricing
+    let finalPrice = bundle.sellPricePesewas;
+    if (storeId) {
+      const customPricing = await db.storePricing.findUnique({
+        where: {
+          storeId_bundleId: {
+            storeId,
+            bundleId: bundle.id,
+          },
+        },
+      });
+
+      if (customPricing) {
+        if (userRole === "AGENT") {
+          finalPrice = customPricing.priceForSubAgentsPesewas;
+        } else {
+          finalPrice = customPricing.priceForCustomersPesewas;
+        }
+      }
+    } else {
+      if (userRole === "AGENT") {
+        finalPrice = bundle.agentPricePesewas;
+      } else if (userRole === "ADMIN") {
+        finalPrice = bundle.supplierCostPesewas;
+      }
+    }
+
+    // 6. Determine email for payment receipt
     const customerEmail = session?.user?.email || formData.guestEmail || "guest@datakhing.com";
 
-    // 6. Handle Wallet Payment
+    // 7. Handle Wallet Payment
     if (formData.paymentMethod === "WALLET") {
       if (!userId) {
         return { success: false, error: "Wallet payments require logging in." };
@@ -85,6 +123,7 @@ export async function createOrderAction(formData: {
             recipientPhone: formData.recipientPhone,
             status: "PENDING",
             amountPaid: finalPrice,
+            storeId,
           },
         });
 
@@ -102,7 +141,7 @@ export async function createOrderAction(formData: {
         return createdOrder;
       });
 
-      // Async Upstream Placement (in mock mode, this starts simulation)
+      // Async Upstream Placement
       try {
         const supplierClient = getSupplierClient();
         const placementResult = await supplierClient.placeOrder(
@@ -122,7 +161,7 @@ export async function createOrderAction(formData: {
         });
 
         if (statusVal === "DELIVERED") {
-          await checkAndCreateCommission(order.id);
+          await createCascadingLedgerEntries(order.id);
         }
 
         // Trigger referral rewards if the user was referred
@@ -168,7 +207,7 @@ export async function createOrderAction(formData: {
       return { success: true, orderId: order.id };
     }
 
-    // 7. Handle Paystack Mobile Money Integration
+    // 8. Handle Paystack Mobile Money Integration
     const callbackUrl = `${process.env.NEXTAUTH_URL || "http://localhost:3000"}/buy/callback`;
     const metadata = {
       bundleId: bundle.id,
@@ -177,6 +216,7 @@ export async function createOrderAction(formData: {
       guestEmail: customerEmail,
       referrerCode: formData.referrerCode || null,
       orderPrice: finalPrice,
+      storeId,
     };
 
     const paymentClient = getPaymentClient();
@@ -196,6 +236,7 @@ export async function createOrderAction(formData: {
         status: "PENDING",
         paystackRef: payResult.reference,
         amountPaid: finalPrice,
+        storeId,
       },
     });
 
@@ -250,7 +291,7 @@ export async function verifyOrderPaymentAction(paystackRef: string) {
       });
 
       if (finalStatus === "DELIVERED") {
-        await checkAndCreateCommission(order.id);
+        await createCascadingLedgerEntries(order.id);
       }
 
       // 2. Wallet transaction mapping (record transaction as purchase)
@@ -260,7 +301,7 @@ export async function verifyOrderPaymentAction(paystackRef: string) {
             userId: order.userId,
             type: "PURCHASE",
             amountPesewas: -order.amountPaid,
-            balanceAfter: order.user?.walletBalance ?? 0, // Since it was paid via Paystack, user wallet is untouched
+            balanceAfter: order.user?.walletBalance ?? 0,
             referenceOrderId: order.id,
           },
         });
@@ -428,7 +469,6 @@ export async function pollOrderStatusAction(orderId: string) {
     });
     if (!order) return { success: false, error: "Order not found" };
 
-    // If already finalized, return it
     if (order.status === "DELIVERED" || order.status === "FAILED" || order.status === "REFUNDED") {
       return { success: true, status: order.status };
     }
@@ -444,9 +484,7 @@ export async function pollOrderStatusAction(orderId: string) {
         });
 
         if (currentStatus === "DELIVERED") {
-          await checkAndCreateCommission(orderId);
-        } else if (currentStatus === "FAILED") {
-          await checkAndReverseCommission(orderId);
+          await createCascadingLedgerEntries(orderId);
         }
 
         return { success: true, status: updated.status };
@@ -467,16 +505,21 @@ export async function applyForAgentAction(businessName: string) {
     const userId = (session.user as any).id;
 
     // Check if user already applied
-    const existing = await db.agentApplication.findUnique({ where: { userId } });
+    const existing = await db.agentApplication.findFirst({
+      where: { applicantUserId: userId },
+    });
     if (existing) {
       return { success: false, error: `Your application is currently ${existing.status.toLowerCase()}.` };
     }
 
+    // Default application fee to 0
     await db.agentApplication.create({
       data: {
-        userId,
-        businessName,
-        status: "PENDING",
+        applicantUserId: userId,
+        parentStoreId: "default",
+        storeName: businessName,
+        applicationFeePesewas: 0,
+        status: "PENDING_REVIEW",
       },
     });
 

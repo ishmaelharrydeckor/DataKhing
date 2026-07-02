@@ -4,6 +4,7 @@ import { db } from "@/lib/db";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth";
 import { revalidatePath } from "next/cache";
+import { getPaymentClient } from "@/lib/payment";
 
 const PAYOUT_THRESHOLD_PESEWAS = 2000; // GH₵20.00 minimum threshold
 
@@ -16,194 +17,132 @@ async function verifyAdmin() {
 }
 
 /**
- * Automates creating a commission record when an order is completed.
- * It is called inside order verification, polling, and webhook handlers.
+ * Request a withdrawal against AVAILABLE ledger rows.
  */
-export async function checkAndCreateCommission(orderId: string) {
-  try {
-    const order = await db.order.findUnique({
-      where: { id: orderId },
-      include: { user: true, bundle: true },
-    });
-
-    if (!order || order.status !== "DELIVERED") return;
-
-    // Check if commission already logged
-    const existing = await db.commission.findFirst({
-      where: { orderId },
-    });
-    if (existing) return;
-
-    let agentUserId: string | null = null;
-
-    // Trace agent: Is buyer an agent, or referred by an agent?
-    if (order.user?.role === "AGENT") {
-      agentUserId = order.userId;
-    } else if (order.user?.referredById) {
-      const referrer = await db.user.findUnique({
-        where: { id: order.user.referredById },
-      });
-      if (referrer && referrer.role === "AGENT") {
-        agentUserId = referrer.id;
-      }
-    }
-
-    if (!agentUserId) return;
-
-    // Calculate commission rate and amount based on carrier markup difference
-    const diff = order.bundle.sellPricePesewas - order.bundle.agentPricePesewas;
-    const commissionRatePercent = order.bundle.sellPricePesewas > 0
-      ? Math.max(1, Math.round((diff / order.bundle.sellPricePesewas) * 100))
-      : 10; // Default to 10% fallback
-    
-    const commissionAmountPesewas = Math.floor((order.amountPaid * commissionRatePercent) / 100);
-
-    await db.commission.create({
-      data: {
-        agentUserId,
-        orderId: order.id,
-        salePricePesewas: order.amountPaid,
-        commissionRatePercent,
-        commissionAmountPesewas,
-        status: "PENDING",
-      },
-    });
-
-    console.log(`Commission created: Agent ${agentUserId} earned ${commissionAmountPesewas} pesewas for order ${order.id}`);
-  } catch (error) {
-    console.error("checkAndCreateCommission error:", error);
-  }
-}
-
-/**
- * Reverses a commission when an order is failed or refunded.
- */
-export async function checkAndReverseCommission(orderId: string) {
-  try {
-    const commission = await db.commission.findFirst({
-      where: { orderId },
-    });
-
-    if (commission && commission.status !== "REVERSED" && commission.status !== "PAID") {
-      await db.commission.update({
-        where: { id: commission.id },
-        data: { status: "REVERSED" },
-      });
-      console.log(`Commission reversed for order ${orderId}`);
-    }
-  } catch (error) {
-    console.error("checkAndReverseCommission error:", error);
-  }
-}
-
-/**
- * Admin action: Bulk approves PENDING commissions.
- */
-export async function approveCommissionsAction(commissionIds: string[]) {
-  try {
-    const adminId = await verifyAdmin();
-
-    await db.$transaction(async (tx) => {
-      await tx.commission.updateMany({
-        where: {
-          id: { in: commissionIds },
-          status: "PENDING",
-        },
-        data: {
-          status: "APPROVED",
-        },
-      });
-
-      // Log audits
-      await tx.auditLog.create({
-        data: {
-          userId: adminId,
-          action: "COMMISSION_APPROVE",
-          details: JSON.stringify({ commissionIds }),
-        },
-      });
-    });
-
-    revalidatePath("/admin/commissions");
-    return { success: true };
-  } catch (e: any) {
-    return { success: false, error: e.message };
-  }
-}
-
-/**
- * Agent action: Requests payout for APPROVED commissions.
- */
-export async function requestPayoutAction() {
+export async function requestWithdrawalAction(storeId: string, amountPesewas: number, payoutMethod: "MANUAL_MOMO" | "MANUAL_BANK" | "PAYSTACK_TRANSFER") {
   try {
     const session = await getServerSession(authOptions);
     if (!session?.user) throw new Error("Unauthorized");
     const userId = (session.user as any).id;
 
-    // Get all approved commissions
-    const approvedCommissions = await db.commission.findMany({
+    // Verify user owns the store
+    const store = await db.store.findUnique({
+      where: { id: storeId },
+    });
+    if (!store || store.ownerUserId !== userId) {
+      throw new Error("You do not own this store.");
+    }
+
+    // Get available ledger entries
+    const availableLedgers = await db.ledger.findMany({
       where: {
-        agentUserId: userId,
-        status: "APPROVED",
-        payoutBatchId: null,
+        storeId,
+        status: "AVAILABLE",
       },
     });
 
-    const totalAmount = approvedCommissions.reduce((sum, c) => sum + c.commissionAmountPesewas, 0);
-
-    if (totalAmount < PAYOUT_THRESHOLD_PESEWAS) {
-      throw new Error(`Minimum payout threshold is ${formatPesewas(PAYOUT_THRESHOLD_PESEWAS)}`);
+    const currentBalance = availableLedgers.reduce((sum, l) => sum + l.amountPesewas, 0);
+    if (currentBalance < amountPesewas) {
+      throw new Error("Insufficient available balance.");
     }
 
-    const batch = await db.$transaction(async (tx) => {
-      // Create batch
-      const b = await tx.agentPayoutBatch.create({
+    if (amountPesewas < PAYOUT_THRESHOLD_PESEWAS) {
+      throw new Error(`Minimum payout threshold is GH₵${(PAYOUT_THRESHOLD_PESEWAS / 100).toFixed(2)}`);
+    }
+
+    // Select ledger IDs to cover the requested amount
+    let accrued = 0;
+    const ledgerIdsToWithdraw: string[] = [];
+    for (const ledger of availableLedgers) {
+      accrued += ledger.amountPesewas;
+      ledgerIdsToWithdraw.push(ledger.id);
+      if (accrued >= amountPesewas) {
+        break;
+      }
+    }
+
+    const withdrawal = await db.$transaction(async (tx) => {
+      // Create withdrawal record
+      const w = await tx.withdrawal.create({
         data: {
-          agentUserId: userId,
-          totalAmountPesewas: totalAmount,
+          storeId,
+          amountPesewas,
+          ledgerIds: ledgerIdsToWithdraw,
           status: "PENDING",
+          payoutMethod,
         },
       });
 
-      // Link commissions to this batch
-      await tx.commission.updateMany({
+      // Move covered ledger entries to WITHDRAWN status immediately
+      await tx.ledger.updateMany({
         where: {
-          id: { in: approvedCommissions.map((c) => c.id) },
+          id: { in: ledgerIdsToWithdraw },
         },
         data: {
-          payoutBatchId: b.id,
+          status: "WITHDRAWN",
         },
       });
 
-      return b;
+      return w;
     });
 
     revalidatePath("/agent/dashboard");
-    return { success: true, batchId: batch.id };
+    revalidatePath("/dashboard/withdrawals");
+    return { success: true, withdrawalId: withdrawal.id };
   } catch (e: any) {
     return { success: false, error: e.message };
   }
 }
 
 /**
- * Admin action: Marks a pending batch payout as paid.
- * Attests manual Mom/Bank reference IDs.
+ * Approves a pending withdrawal and processes pay out.
  */
-export async function payoutAgentBatchAction(
-  batchId: string,
-  payoutMethod: "manual_momo" | "manual_bank",
+export async function payoutWithdrawalAction(
+  withdrawalId: string,
   payoutReference: string,
   notes?: string
 ) {
   try {
     const adminId = await verifyAdmin();
 
-    if (!payoutReference.trim()) {
-      throw new Error("Payout transaction reference ID is required.");
+    const withdrawal = await db.withdrawal.findUnique({
+      where: { id: withdrawalId },
+    });
+
+    if (!withdrawal || withdrawal.status !== "PENDING") {
+      throw new Error("Withdrawal request not found or not in pending status.");
     }
 
-    // Call automation payout service
-    await payoutAgent(batchId, payoutMethod, payoutReference, adminId, notes);
+    if (withdrawal.payoutMethod === "PAYSTACK_TRANSFER") {
+      // Extension point for automated transfer:
+      // const paymentClient = getPaymentClient();
+      // await paymentClient.initiateTransfer(...);
+    }
+
+    await db.$transaction(async (tx) => {
+      await tx.withdrawal.update({
+        where: { id: withdrawalId },
+        data: {
+          status: "COMPLETED",
+          payoutReference,
+          completedAt: new Date(),
+          completedByUserId: adminId,
+        },
+      });
+
+      await tx.auditLog.create({
+        data: {
+          userId: adminId,
+          action: "WITHDRAWAL_COMPLETE",
+          details: JSON.stringify({
+            withdrawalId,
+            amount: withdrawal.amountPesewas,
+            reference: payoutReference,
+            notes,
+          }),
+        },
+      });
+    });
 
     revalidatePath("/admin/commissions");
     return { success: true };
@@ -213,73 +152,56 @@ export async function payoutAgentBatchAction(
 }
 
 /**
- * Internal service method for batch payouts.
- * Designed to easily support automated Paystack Transfers later.
+ * Rejects/fails a pending withdrawal request and releases back covered ledgers.
  */
-async function payoutAgent(
-  batchId: string,
-  method: string,
-  reference: string,
-  adminId: string,
-  notes?: string
-) {
-  const batch = await db.agentPayoutBatch.findUnique({
-    where: { id: batchId },
-    include: { commissions: true },
-  });
+export async function rejectWithdrawalAction(withdrawalId: string, notes?: string) {
+  try {
+    const adminId = await verifyAdmin();
 
-  if (!batch || batch.status !== "PENDING") {
-    throw new Error("Payout batch not found or already completed.");
+    const withdrawal = await db.withdrawal.findUnique({
+      where: { id: withdrawalId },
+    });
+
+    if (!withdrawal || withdrawal.status !== "PENDING") {
+      throw new Error("Withdrawal request not found or not in pending status.");
+    }
+
+    await db.$transaction(async (tx) => {
+      await tx.withdrawal.update({
+        where: { id: withdrawalId },
+        data: {
+          status: "FAILED",
+          completedAt: new Date(),
+          completedByUserId: adminId,
+        },
+      });
+
+      // Release the locked ledger entries back to AVAILABLE
+      await tx.ledger.updateMany({
+        where: {
+          id: { in: withdrawal.ledgerIds },
+        },
+        data: {
+          status: "AVAILABLE",
+        },
+      });
+
+      await tx.auditLog.create({
+        data: {
+          userId: adminId,
+          action: "WITHDRAWAL_REJECT",
+          details: JSON.stringify({
+            withdrawalId,
+            amount: withdrawal.amountPesewas,
+            notes,
+          }),
+        },
+      });
+    });
+
+    revalidatePath("/admin/commissions");
+    return { success: true };
+  } catch (e: any) {
+    return { success: false, error: e.message };
   }
-
-  // --- EXTENSION POINT FOR PAYSTACK TRANSFERS ---
-  // If (method === "paystack_transfer"), initialize Paystack Transfer API call here
-  // and wait/verify transaction reference.
-  // -----------------------------------------------
-
-  await db.$transaction(async (tx) => {
-    // 1. Mark batch as completed
-    await tx.agentPayoutBatch.update({
-      where: { id: batchId },
-      data: {
-        status: "COMPLETED",
-        completedAt: new Date(),
-        createdByAdminId: adminId,
-      },
-    });
-
-    // 2. Set all associated commissions to paid
-    await tx.commission.updateMany({
-      where: {
-        payoutBatchId: batchId,
-      },
-      data: {
-        status: "PAID",
-        payoutMethod: method,
-        payoutReference: reference,
-        paidAt: new Date(),
-        paidByAdminId: adminId,
-        notes,
-      },
-    });
-
-    // 3. Log admin audit trail
-    await tx.auditLog.create({
-      data: {
-        userId: adminId,
-        action: "PAYOUT_BATCH_COMPLETE",
-        details: JSON.stringify({
-          batchId,
-          totalAmount: batch.totalAmountPesewas,
-          method,
-          reference,
-          notes,
-        }),
-      },
-    });
-  });
-}
-
-function formatPesewas(pesewas: number): string {
-  return `GH₵${(pesewas / 100).toFixed(2)}`;
 }

@@ -5,23 +5,37 @@ export const revalidate = 0;
 
 export default async function AdminReferralsPage() {
   const applications = await db.agentApplication.findMany({
-    include: {
-      user: {
-        select: {
-          name: true,
-          email: true,
-          phone: true,
-        },
-      },
-    },
     orderBy: {
       createdAt: "desc",
     },
   });
 
+  // Map to fit legacy client view parameters
+  const mappedApps = await Promise.all(
+    applications.map(async (app) => {
+      const user = await db.user.findUnique({
+        where: { id: app.applicantUserId },
+        select: { name: true, email: true, phone: true },
+      });
+
+      return {
+        id: app.id,
+        userId: app.applicantUserId,
+        status: app.status,
+        businessName: app.storeName,
+        createdAt: app.createdAt,
+        user: {
+          name: user?.name || "Anonymous",
+          email: user?.email || "unknown@datakhing.com",
+          phone: user?.phone || "",
+        },
+      };
+    })
+  );
+
   return (
     <div className="space-y-6">
-      <AdminAgentAppsClient initialApps={applications as any} />
+      <AdminAgentAppsClient initialApps={mappedApps as any} />
     </div>
   );
 }

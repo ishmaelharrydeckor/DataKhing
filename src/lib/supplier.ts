@@ -50,7 +50,7 @@ class MockSupplierClient implements SupplierClient {
     recipientPhone: string,
     idempotencyKey: string
   ): Promise<SupplierOrderResult> {
-    const ref = `SUP-MOCK-${Math.floor(100000 + Math.random() * 900000)}`;
+    const ref = `API-MOCK-${Math.floor(100000 + Math.random() * 900000)}`;
     if (recipientPhone.endsWith("999")) {
       return {
         supplierOrderRef: ref,
@@ -77,7 +77,7 @@ class RealSupplierClient implements SupplierClient {
 
   constructor() {
     this.apiKey = process.env.SUPPLIER_API_KEY || "";
-    this.baseUrl = process.env.SUPPLIER_API_BASE_URL || "https://api.datamartgh.shop/api";
+    this.baseUrl = process.env.SUPPLIER_API_BASE_URL || "https://api.datamartgh.shop/api/store/v1";
   }
 
   private getMaskedKey(): string {
@@ -90,30 +90,34 @@ class RealSupplierClient implements SupplierClient {
       where: { id: "default" },
     });
     if (!account) return false;
-    if (account.rateLimitRemaining < 10 && account.rateLimitResetAt > new Date()) {
+    if (account.rateLimitRemaining < 5 && account.rateLimitResetAt > new Date()) {
       return true;
     }
     return false;
   }
 
-  private async updateAccountLimits(balanceAfter: number, rateLimit: { limit: number; remaining: number; resetInSeconds: number }) {
+  private async updateAccountLimits(balanceAfter: number, rateLimit?: { limit: number; remaining: number; resetInSeconds: number }) {
     try {
       const balancePesewas = Math.round(balanceAfter * 100);
-      const rateLimitResetAt = new Date(Date.now() + rateLimit.resetInSeconds * 1000);
       
+      const updateData: any = {
+        balancePesewas,
+      };
+
+      if (rateLimit) {
+        updateData.rateLimitRemaining = rateLimit.remaining;
+        updateData.rateLimitResetAt = new Date(Date.now() + rateLimit.resetInSeconds * 1000);
+      }
+
       await db.supplierAccount.upsert({
         where: { id: "default" },
         create: {
           id: "default",
           balancePesewas,
-          rateLimitRemaining: rateLimit.remaining,
-          rateLimitResetAt,
+          rateLimitRemaining: rateLimit ? rateLimit.remaining : 60,
+          rateLimitResetAt: rateLimit ? new Date(Date.now() + rateLimit.resetInSeconds * 1000) : new Date(),
         },
-        update: {
-          balancePesewas,
-          rateLimitRemaining: rateLimit.remaining,
-          rateLimitResetAt,
-        },
+        update: updateData,
       });
     } catch (e) {
       console.error("Failed to update SupplierAccount limits in DB:", e);
@@ -124,7 +128,6 @@ class RealSupplierClient implements SupplierClient {
     const throttled = await this.isThrottled();
     if (throttled) {
       console.warn("Supplier API catalog sync throttled due to low rate limit remaining. Using local cached db data.");
-      // Fetch from DB cached list
       const localBundles = await db.bundle.findMany({ where: { active: true } });
       return localBundles.map(b => ({
         id: b.id,
@@ -136,38 +139,37 @@ class RealSupplierClient implements SupplierClient {
     }
 
     try {
-      const res = await fetch(`${this.baseUrl}/bundles`, {
+      const res = await fetch(`${this.baseUrl}/products`, {
         method: "GET",
         headers: {
-          "X-API-Key": this.apiKey,
+          "Authorization": `Bearer ${this.apiKey}`,
           "Content-Type": "application/json",
         },
       });
 
       if (!res.ok) {
-        throw new Error(`Failed to fetch catalog. HTTP Code: ${res.status}`);
+        await this.handleHttpError(res);
       }
 
-      const data = await res.json();
+      const payload = await res.json();
       
-      // Update account status if metadata returned in catalog fetch
-      if (data.balanceAfter && data.rateLimit) {
-        await this.updateAccountLimits(data.balanceAfter, data.rateLimit);
-      }
+      const bundles: any[] = payload.data || payload.products || [];
+      return bundles.map((b: any) => {
+        let mappedNetwork = b.network;
+        if (b.network === "YELLO") mappedNetwork = "MTN";
+        else if (b.network === "AT_PREMIUM") mappedNetwork = "AIRTELTIGO";
 
-      // Format response bundles to match client interface
-      const bundles: any[] = data.bundles || [];
-      return bundles.map((b: any) => ({
-        id: b.id,
-        network: b.network === "YELLO" ? "MTN" : b.network === "AT_PREMIUM" ? "AIRTELTIGO" : b.network,
-        label: b.label,
-        dataAmountGB: parseFloat(b.capacity),
-        supplierCostPesewas: Math.round(parseFloat(b.price) * 100),
-      }));
+        return {
+          id: b.id || b.sku || `sku-${b.capacity}-${b.network}`,
+          network: mappedNetwork,
+          label: b.label || `${mappedNetwork} ${b.capacity}GB`,
+          dataAmountGB: typeof b.capacity === "number" ? b.capacity : parseFloat(b.capacity),
+          supplierCostPesewas: Math.round(parseFloat(b.price) * 100),
+        };
+      });
 
     } catch (error) {
       console.error("getCatalog error:", error);
-      // Fallback to local DB
       const localBundles = await db.bundle.findMany({ where: { active: true } });
       return localBundles.map(b => ({
         id: b.id,
@@ -192,33 +194,30 @@ class RealSupplierClient implements SupplierClient {
       throw new Error("Local Bundle metadata matching ID not found.");
     }
 
-    // Map network codes
     const networkMap: Record<string, string> = {
       MTN: "YELLO",
       TELECEL: "TELECEL",
       AIRTELTIGO: "AT_PREMIUM",
     };
     const networkCode = networkMap[bundle.network] || bundle.network;
-    const capacityCode = String(bundle.dataAmountGB);
+    const capacityNum = bundle.dataAmountGB;
     const normalizedPhone = formatPhone(recipientPhone);
 
     const body = {
       phoneNumber: normalizedPhone,
       network: networkCode,
-      capacity: capacityCode,
-      gateway: "wallet",
+      capacity: capacityNum,
     };
 
-    // Fetch helper with timeout and retry backoff
-    const fetchAttempt = async (attempt: number): Promise<Response> => {
+    const fetchAttempt = async (): Promise<Response> => {
       const controller = new AbortController();
-      const timeoutId = setTimeout(() => controller.abort(), 8000); // 8-second timeout
+      const timeoutId = setTimeout(() => controller.abort(), 8000);
 
       try {
-        const response = await fetch(`${this.baseUrl}/purchase`, {
+        const response = await fetch(`${this.baseUrl}/orders`, {
           method: "POST",
           headers: {
-            "X-API-Key": this.apiKey,
+            "Authorization": `Bearer ${this.apiKey}`,
             "Content-Type": "application/json",
             "X-Idempotency-Key": idempotencyKey,
           },
@@ -235,105 +234,147 @@ class RealSupplierClient implements SupplierClient {
 
     let response: Response;
     try {
-      response = await fetchAttempt(1);
+      response = await fetchAttempt();
     } catch (e: any) {
-      // Retry once on timeout/network failure
-      console.warn(`Attempt 1 failed: ${e.message || "Timeout"}. Retrying in 2s...`);
+      console.warn(`Attempt 1 failed: ${e.message || "Timeout"}. Retrying in 2s with same idempotency key...`);
       await new Promise((resolve) => setTimeout(resolve, 2000));
       try {
-        response = await fetchAttempt(2);
+        response = await fetchAttempt();
       } catch (retryErr) {
         console.error("Retry attempt 2 failed:", retryErr);
-        // Fallback to pending state for webhook/polling resolution
         return { supplierOrderRef: "", status: "PENDING" };
       }
     }
 
-    const payload = await response.json();
-
-    // Handle 5xx errors or server timeout failures
+    // Handle 5xx/503 errors
     if (response.status >= 500) {
-      console.error(`Upstream returned HTTP status ${response.status}. Payload:`, payload);
+      console.error(`Upstream returned HTTP status ${response.status}`);
       return { supplierOrderRef: "", status: "PENDING" };
     }
 
-    // Handle duplicate requests (already processed)
-    if (response.status === 409) {
-      console.warn(`Idempotency conflict (409) detected for order key: ${idempotencyKey}`);
-      // Query local order details to prevent duplicate processing
-      const existingOrder = await db.order.findUnique({
-        where: { id: idempotencyKey },
-      });
-      return {
-        supplierOrderRef: existingOrder?.supplierOrderRef || "DUPLICATE",
-        status: (existingOrder?.status as any) || "PENDING",
-      };
+    const payload = await response.json();
+
+    if (!response.ok) {
+      await this.handleErrorPayload(response.status, payload, idempotencyKey);
     }
 
-    // Handle standard API errors
-    if (!response.ok || payload.status === "error") {
-      const errorMessage = payload.message || "Unknown supplier error";
-      
-      // Check for insufficient balanceSpecifically
-      if (errorMessage.toLowerCase().includes("balance") || response.status === 400 && payload.requiredAmount) {
-        console.error(`[ALARM/CRITICAL] Supplier account balance is insufficient! Required: ${payload.requiredAmount}, Balance: ${payload.currentBalance}`);
-        
-        // Update local Order record as FAILED
-        await db.order.update({
-          where: { id: idempotencyKey },
-          data: { status: "FAILED" },
-        });
+    // Success response parsing
+    const orderData = payload.data?.order || payload.order;
+    const walletData = payload.data?.wallet || payload.wallet;
 
-        throw new Error("This item is temporarily unavailable, please try again shortly");
-      }
-
-      throw new Error(errorMessage);
+    if (walletData && walletData.balanceAfter !== undefined) {
+      await this.updateAccountLimits(walletData.balanceAfter);
     }
 
-    // Process successful response payload details
-    const { purchaseId, orderReference, balanceAfter, orderStatus, rateLimit } = payload;
-
-    // Update locally stored Order reference
-    await db.order.update({
-      where: { id: idempotencyKey },
-      data: {
-        supplierOrderRef: orderReference,
-        supplierPurchaseId: purchaseId,
-        idempotencyKey: idempotencyKey,
-        status: orderStatus === "completed" ? "DELIVERED" : orderStatus === "failed" ? "FAILED" : "PROCESSING",
-      },
-    });
-
-    if (balanceAfter && rateLimit) {
-      await this.updateAccountLimits(balanceAfter, rateLimit);
-    }
+    const statusVal = orderData.status === "completed" || orderData.status === "success" 
+      ? "DELIVERED" 
+      : orderData.status === "failed" 
+      ? "FAILED" 
+      : "PROCESSING";
 
     return {
-      supplierOrderRef: orderReference,
-      status: orderStatus === "completed" ? "DELIVERED" : orderStatus === "failed" ? "FAILED" : "PROCESSING",
+      supplierOrderRef: orderData.reference || orderData.id,
+      status: statusVal,
     };
   }
 
   async getOrderStatus(supplierOrderRef: string): Promise<"PENDING" | "PROCESSING" | "DELIVERED" | "FAILED"> {
     try {
-      const res = await fetch(`${this.baseUrl}/order-status/${encodeURIComponent(supplierOrderRef)}`, {
+      const res = await fetch(`${this.baseUrl}/orders/${encodeURIComponent(supplierOrderRef)}`, {
         method: "GET",
         headers: {
-          "X-API-Key": this.apiKey,
+          "Authorization": `Bearer ${this.apiKey}`,
           "Content-Type": "application/json",
         },
       });
 
       if (!res.ok) return "PENDING";
       const payload = await res.json();
+      const order = payload.data?.order || payload.order;
       
-      if (payload.orderStatus === "completed") return "DELIVERED";
-      if (payload.orderStatus === "failed") return "FAILED";
+      if (order.status === "completed" || order.status === "success" || order.status === "delivered") return "DELIVERED";
+      if (order.status === "failed") return "FAILED";
       return "PROCESSING";
     } catch (e) {
       console.error("getOrderStatus failed:", e);
       return "PROCESSING";
     }
+  }
+
+  private async handleHttpError(res: Response) {
+    let errPayload: any = {};
+    try {
+      errPayload = await res.json();
+    } catch (_) {}
+    const code = errPayload.code || "";
+    const msg = errPayload.message || "";
+
+    if (res.status === 401) {
+      console.error(`[CRITICAL] Admin alert: API Key Authentication Error: ${code} - ${msg}`);
+      throw new Error("Configuration Error: Supplier Authentication Failed.");
+    }
+    if (res.status === 403) {
+      console.error(`[CRITICAL] Admin alert: Forbidden Error: ${code} - ${msg}`);
+      throw new Error("Configuration Error: Supplier Access Denied.");
+    }
+    if (res.status === 410) {
+      console.error(`[CRITICAL] Admin alert: Store deleted: ${code} - ${msg}`);
+      throw new Error("Configuration Error: Supplier Store Deleted.");
+    }
+    throw new Error(msg || `HTTP Error ${res.status}`);
+  }
+
+  private async handleErrorPayload(status: number, payload: any, idempotencyKey: string) {
+    const code = payload.code || "";
+    const message = payload.message || "Unknown supplier error";
+
+    if (status === 401) {
+      console.error(`[CRITICAL] Admin alert: API Key Authentication error: ${code}`);
+      throw new Error("Supplier Authentication Failed");
+    }
+    if (status === 403) {
+      console.error(`[CRITICAL] Admin alert: Supplier authorization failure: ${code}`);
+      throw new Error("Supplier Authorization Failed");
+    }
+    if (status === 410) {
+      console.error(`[CRITICAL] Admin alert: Supplier store deleted: ${code}`);
+      throw new Error("Supplier Store Deleted");
+    }
+    if (status === 400 && (code === "INVALID_PHONE" || code === "PHONE_NETWORK_MISMATCH")) {
+      throw new Error("Please check the phone number and try again");
+    }
+    if (status === 400 && code === "BUNDLE_NOT_OFFERED") {
+      this.getCatalog().catch(e => console.error("Error refreshing catalog: ", e));
+      throw new Error("This bundle is temporarily unavailable");
+    }
+    if (status === 402 || code === "INSUFFICIENT_BALANCE") {
+      console.error("[CRITICAL] Admin alert: DataMart deposit wallet needs topping up.");
+      await db.order.update({
+        where: { id: idempotencyKey },
+        data: { status: "FAILED" },
+      });
+      throw new Error("This item is temporarily unavailable, please try again shortly");
+    }
+    if (status === 409 || code === "DUPLICATE_PENDING") {
+      const existingOrder = await db.order.findUnique({
+        where: { id: idempotencyKey },
+      });
+      if (existingOrder && existingOrder.supplierOrderRef) {
+        return {
+          supplierOrderRef: existingOrder.supplierOrderRef,
+          status: existingOrder.status,
+        };
+      }
+      throw new Error("Duplicate request processing");
+    }
+    if (status === 429) {
+      const retryAfter = parseInt(payload.retryAfter || "5");
+      console.warn(`[WARN] Rate limit hit. Backing off for ${retryAfter} seconds.`);
+      await this.updateAccountLimits(0, { limit: 60, remaining: 0, resetInSeconds: retryAfter });
+      throw new Error("Supplier is busy. Please try again shortly");
+    }
+
+    throw new Error(message);
   }
 }
 

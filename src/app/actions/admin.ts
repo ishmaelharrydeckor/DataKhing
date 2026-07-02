@@ -196,7 +196,7 @@ export async function manageAgentApplicationAction(applicationId: string, status
       // If approved, update user's role to AGENT
       if (status === "APPROVED") {
         await tx.user.update({
-          where: { id: app.userId },
+          where: { id: app.applicantUserId },
           data: { role: "AGENT" },
         });
       }
@@ -207,8 +207,8 @@ export async function manageAgentApplicationAction(applicationId: string, status
           action: `AGENT_APPLICATION_${status}`,
           details: JSON.stringify({
             applicationId,
-            targetUserId: app.userId,
-            businessName: app.businessName,
+            targetUserId: app.applicantUserId,
+            businessName: app.storeName,
           }),
         },
       });

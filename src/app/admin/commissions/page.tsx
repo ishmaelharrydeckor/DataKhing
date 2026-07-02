@@ -14,24 +14,13 @@ export default async function AdminCommissionsPage() {
     redirect("/");
   }
 
-  // Fetch pending commissions to approve
-  const pendingCommissions = await db.commission.findMany({
+  // Fetch pending withdrawals
+  const pendingWithdrawals = await db.withdrawal.findMany({
     where: { status: "PENDING" },
-    include: { agentUser: true },
-    orderBy: { createdAt: "desc" },
+    include: { store: true },
+    orderBy: { requestedAt: "desc" },
   });
 
-  // Fetch pending payout batches
-  const pendingBatches = await db.agentPayoutBatch.findMany({
-    where: { status: "PENDING" },
-    include: {
-      agentUser: true,
-      commissions: true,
-    },
-    orderBy: { createdAt: "desc" },
-  });
-
-  // --- RECONCILIATION CALCULATION ---
   // Fetch delivered orders
   const deliveredOrders = await db.order.findMany({
     where: { status: "DELIVERED" },
@@ -41,11 +30,11 @@ export default async function AdminCommissionsPage() {
   const totalRevenue = deliveredOrders.reduce((sum, o) => sum + o.amountPaid, 0);
   const totalSupplierCost = deliveredOrders.reduce((sum, o) => sum + o.bundle.supplierCostPesewas, 0);
 
-  // Fetch paid commissions
-  const paidCommissions = await db.commission.findMany({
-    where: { status: "PAID" },
+  // Fetch completed withdrawals
+  const completedWithdrawals = await db.withdrawal.findMany({
+    where: { status: "COMPLETED" },
   });
-  const totalCommissionsPaid = paidCommissions.reduce((sum, c) => sum + c.commissionAmountPesewas, 0);
+  const totalCommissionsPaid = completedWithdrawals.reduce((sum, w) => sum + w.amountPesewas, 0);
 
   const netMargin = totalRevenue - totalSupplierCost - totalCommissionsPaid;
 
@@ -61,7 +50,7 @@ export default async function AdminCommissionsPage() {
               Financial Administration
             </span>
             <h1 className="text-2xl font-bold text-white">Commissions & Payouts</h1>
-            <p className="text-xs text-slate-400 mt-1">Approve pending agent commissions, record payout settlements, and review business profits.</p>
+            <p className="text-xs text-slate-400 mt-1">Approve pending agent withdrawals, record payout settlements, and review business profits.</p>
           </div>
         </div>
 
@@ -115,10 +104,7 @@ export default async function AdminCommissionsPage() {
         </div>
 
         {/* Client Interactive Area */}
-        <CommissionsClient
-          pendingCommissions={pendingCommissions}
-          pendingBatches={pendingBatches}
-        />
+        <CommissionsClient pendingWithdrawals={pendingWithdrawals} />
 
       </div>
     </div>

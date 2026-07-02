@@ -3,7 +3,7 @@ import { authOptions } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { formatPesewas, SITE_CONFIG } from "@/lib/site-config";
 import Link from "next/link";
-import { Wallet, History, Users, Settings, User } from "lucide-react";
+import { Wallet, History, Users, Settings, User, Sliders, Palette, Landmark, FileCheck } from "lucide-react";
 import { db } from "@/lib/db";
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
@@ -21,6 +21,8 @@ export default async function DashboardLayout({ children }: { children: React.Re
   if (!dbUser) {
     redirect("/auth/signin");
   }
+
+  const isResellerOrAdmin = dbUser.role === "AGENT" || dbUser.role === "ADMIN";
 
   return (
     <div className="flex-1 bg-slate-950 text-slate-100 min-h-full py-12 px-4 sm:px-6 lg:px-8">
@@ -77,8 +79,48 @@ export default async function DashboardLayout({ children }: { children: React.Re
             className="flex items-center gap-2 py-3 px-5 rounded-xl text-sm font-semibold hover:bg-slate-900 transition text-slate-300 active:bg-slate-850"
           >
             <Users className="w-4 h-4 text-slate-400" />
-            Referrals & Commissions
+            Referrals
           </Link>
+
+          {isResellerOrAdmin && (
+            <>
+              <Link
+                href="/dashboard/pricing"
+                className="flex items-center gap-2 py-3 px-5 rounded-xl text-sm font-semibold hover:bg-slate-900 transition text-indigo-400 active:bg-slate-850"
+              >
+                <Sliders className="w-4 h-4 text-indigo-400" />
+                Custom Pricing
+              </Link>
+              <Link
+                href="/dashboard/branding"
+                className="flex items-center gap-2 py-3 px-5 rounded-xl text-sm font-semibold hover:bg-slate-900 transition text-indigo-400 active:bg-slate-850"
+              >
+                <Palette className="w-4 h-4 text-indigo-400" />
+                Branding Config
+              </Link>
+              <Link
+                href="/dashboard/agents"
+                className="flex items-center gap-2 py-3 px-5 rounded-xl text-sm font-semibold hover:bg-slate-900 transition text-indigo-400 active:bg-slate-850"
+              >
+                <Users className="w-4 h-4 text-indigo-400" />
+                Sub-Agents
+              </Link>
+              <Link
+                href="/dashboard/applications"
+                className="flex items-center gap-2 py-3 px-5 rounded-xl text-sm font-semibold hover:bg-slate-900 transition text-indigo-400 active:bg-slate-850"
+              >
+                <FileCheck className="w-4 h-4 text-indigo-400" />
+                Review Applicants
+              </Link>
+              <Link
+                href="/dashboard/withdrawals"
+                className="flex items-center gap-2 py-3 px-5 rounded-xl text-sm font-semibold hover:bg-slate-900 transition text-indigo-400 active:bg-slate-850"
+              >
+                <Landmark className="w-4 h-4 text-indigo-400" />
+                Ledger Profits
+              </Link>
+            </>
+          )}
         </div>
 
         <div className="bg-slate-950">{children}</div>
