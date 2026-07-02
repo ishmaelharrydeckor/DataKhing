@@ -352,18 +352,23 @@ export async function topupWalletAction(amountPesewas: number) {
   }
 }
 
-export async function verifyWalletTopupAction(reference: string, amountPesewas: number) {
+export async function verifyWalletTopupAction(reference: string, amountPesewas: number, webhookUserId?: string) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user) {
-      return { success: false, error: "Authentication required." };
+    let userId = webhookUserId;
+    if (!userId) {
+      const session = await getServerSession(authOptions);
+      if (!session?.user) {
+        return { success: false, error: "Authentication required." };
+      }
+      userId = (session.user as any).id;
     }
-    const userId = (session.user as any).id;
+
+    const finalUserId = userId as string;
 
     // Check if this wallet transaction was already handled
     const existingTx = await db.walletTransaction.findFirst({
       where: {
-        userId,
+        userId: finalUserId,
         type: "TOPUP",
         paymentRef: reference,
       },
@@ -380,7 +385,7 @@ export async function verifyWalletTopupAction(reference: string, amountPesewas: 
       const finalAmount = verification.amountPaidPesewas > 0 ? verification.amountPaidPesewas : amountPesewas;
       const updatedUser = await db.$transaction(async (tx) => {
         const u = await tx.user.update({
-          where: { id: userId },
+          where: { id: finalUserId },
           data: {
             walletBalance: { increment: finalAmount },
           },
@@ -388,7 +393,7 @@ export async function verifyWalletTopupAction(reference: string, amountPesewas: 
 
         await tx.walletTransaction.create({
           data: {
-            userId,
+            userId: finalUserId,
             type: "TOPUP",
             amountPesewas: finalAmount,
             balanceAfter: u.walletBalance,

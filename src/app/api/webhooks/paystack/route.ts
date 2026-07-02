@@ -29,7 +29,7 @@ export async function POST(req: Request) {
       console.log(`Paystack Webhook: Received successful charge [${reference}] of amount ${amountPesewas} pesewas`);
 
       if (metadata.type === "WALLET_TOPUP") {
-        await verifyWalletTopupAction(reference, amountPesewas);
+        await verifyWalletTopupAction(reference, amountPesewas, metadata.userId);
       } else {
         await verifyOrderPaymentAction(reference);
       }
