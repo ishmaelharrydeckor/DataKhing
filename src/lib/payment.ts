@@ -89,7 +89,6 @@ class RealPaymentClient implements PaymentClient {
         amount: amountPesewas, // Paystack requires amount in lowest currency unit (pesewas/kobo)
         callback_url: callbackUrl,
         metadata,
-        channels: ["mobile_money"], // Limit to mobile money
       }),
     });
 
