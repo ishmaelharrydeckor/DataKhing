@@ -21,6 +21,7 @@ function WalletCallbackComponent() {
   // Let's pass 5000 pesewas as a mock default topup if not verified, or let verifyWalletTopupAction extract it.
   const [status, setStatus] = useState<"verifying" | "success" | "failed">("verifying");
   const [error, setError] = useState<string>("");
+  const [creditedAmount, setCreditedAmount] = useState<number>(0);
 
   useEffect(() => {
     if (!reference) {
@@ -32,17 +33,15 @@ function WalletCallbackComponent() {
     let isMounted = true;
 
     async function verify() {
-      // Mock topup amounts based on reference or user selection
-      // For simplicity, we credit GH₵50 (5000 pesewas) or GH₵100 (10000 pesewas)
-      // Let's default to GH₵50 for mock verification top-ups.
       const res = await verifyWalletTopupAction(reference, 5000);
       if (!isMounted) return;
 
       if (res.success) {
         setStatus("success");
+        setCreditedAmount(res.amountPesewas ? res.amountPesewas / 100 : 50);
         setTimeout(() => {
           router.push("/dashboard/wallet");
-        }, 2000);
+        }, 2500);
       } else {
         setStatus("failed");
         setError(res.error || "Wallet topup verification failed.");
@@ -73,7 +72,7 @@ function WalletCallbackComponent() {
               <ShieldCheck className="w-12 h-12" />
             </div>
             <h1 className="text-2xl font-bold text-white">Wallet Credited!</h1>
-            <p className="text-emerald-400 text-sm font-semibold mt-1">GH₵50.00 Added Successfully</p>
+            <p className="text-emerald-400 text-sm font-semibold mt-1">GH₵{creditedAmount.toFixed(2)} Added Successfully</p>
             <p className="text-slate-400 mt-3 text-sm">Redirecting you to your wallet page...</p>
           </div>
         )}

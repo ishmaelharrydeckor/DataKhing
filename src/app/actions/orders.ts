@@ -370,7 +370,7 @@ export async function verifyWalletTopupAction(reference: string, amountPesewas: 
     });
 
     if (existingTx) {
-      return { success: true, balance: existingTx.balanceAfter };
+      return { success: true, balance: existingTx.balanceAfter, amountPesewas: existingTx.amountPesewas };
     }
 
     const paymentClient = getPaymentClient();
@@ -399,7 +399,7 @@ export async function verifyWalletTopupAction(reference: string, amountPesewas: 
         return u;
       });
 
-      return { success: true, balance: updatedUser.walletBalance };
+      return { success: true, balance: updatedUser.walletBalance, amountPesewas: finalAmount };
     }
 
     return { success: false, error: "Verification failed." };
