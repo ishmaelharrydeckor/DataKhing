@@ -3,6 +3,7 @@ import { authOptions } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { redirect } from "next/navigation";
 import BrandingForm from "./BrandingForm";
+import { resolveActiveStore } from "@/lib/resolve-store";
 
 export const revalidate = 0;
 
@@ -13,10 +14,8 @@ export default async function BrandingDashboardPage() {
   }
   const userId = (session.user as any).id;
 
-  // Find store owned by this user
-  const store = await db.store.findFirst({
-    where: { ownerUserId: userId },
-  });
+  // Find active store owned by this user
+  const store = await resolveActiveStore(userId);
 
   if (!store) {
     return (

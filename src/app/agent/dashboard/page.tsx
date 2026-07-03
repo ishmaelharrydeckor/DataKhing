@@ -5,6 +5,7 @@ import { formatPesewas, SITE_CONFIG } from "@/lib/site-config";
 import { redirect } from "next/navigation";
 import { ShieldCheck, DollarSign, ListOrdered, ArrowLeft, Clock, CheckCircle, RefreshCcw } from "lucide-react";
 import Link from "next/link";
+import { resolveActiveStore } from "@/lib/resolve-store";
 
 export const revalidate = 0;
 
@@ -28,10 +29,21 @@ export default async function AgentDashboardPage() {
 
   const userId = (session.user as any).id;
 
+  // Self-healing: if admin logged in does not own the ROOT store, fix ownership
+  if (role === "ADMIN") {
+    const rootStore = await db.store.findFirst({
+      where: { storeType: "ROOT" },
+    });
+    if (rootStore && rootStore.ownerUserId !== userId) {
+      await db.store.update({
+        where: { id: rootStore.id },
+        data: { ownerUserId: userId },
+      });
+    }
+  }
+
   // Find store owned by this agent
-  const store = await db.store.findFirst({
-    where: { ownerUserId: userId },
-  });
+  const store = await resolveActiveStore(userId);
 
   if (!store) {
     redirect("/agent/apply");

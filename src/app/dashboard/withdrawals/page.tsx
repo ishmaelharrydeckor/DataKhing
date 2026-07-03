@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import WithdrawalsForm from "./WithdrawalsForm";
 import { formatPesewas } from "@/lib/site-config";
 import { ArrowLeft, Clock, CheckCircle2, XCircle } from "lucide-react";
+import { resolveActiveStore } from "@/lib/resolve-store";
 
 export const revalidate = 0;
 
@@ -15,9 +16,7 @@ export default async function WithdrawalsPage() {
   }
   const userId = (session.user as any).id;
 
-  const currentStore = await db.store.findFirst({
-    where: { ownerUserId: userId },
-  });
+  const currentStore = await resolveActiveStore(userId);
 
   if (!currentStore) {
     return (

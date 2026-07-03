@@ -4,10 +4,20 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { Settings, ShoppingBag, Users, HelpCircle, LayoutDashboard, Award, Coins } from "lucide-react";
 import { SITE_CONFIG } from "@/lib/site-config";
+import { db } from "@/lib/db";
 
 export default async function AdminLayout({ children }: { children: React.ReactNode }) {
   const session = await getServerSession(authOptions);
   if (!session?.user || (session.user as any).role !== "ADMIN") {
+    redirect("/");
+  }
+
+  const userId = (session.user as any).id;
+  const rootStore = await db.store.findFirst({
+    where: { ownerUserId: userId, storeType: "ROOT" },
+  });
+
+  if (!rootStore) {
     redirect("/");
   }
 

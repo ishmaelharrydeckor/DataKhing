@@ -4,12 +4,39 @@ import { db } from "@/lib/db";
 import { formatPesewas, SITE_CONFIG } from "@/lib/site-config";
 import Link from "next/link";
 import { ArrowRight, ShoppingCart, Clock, CheckCircle2, XCircle, AlertCircle, Smartphone } from "lucide-react";
+import { redirect } from "next/navigation";
 
 export const revalidate = 0;
 
 export default async function DashboardOverview() {
   const session = await getServerSession(authOptions);
-  const userId = (session?.user as any)?.id;
+  if (!session?.user) {
+    redirect("/auth/signin");
+  }
+  const userId = (session.user as any).id;
+  const role = (session.user as any).role;
+
+  // Self-healing: if admin logged in does not own the ROOT store, fix ownership
+  if (role === "ADMIN") {
+    const rootStore = await db.store.findFirst({
+      where: { storeType: "ROOT" },
+    });
+    if (rootStore && rootStore.ownerUserId !== userId) {
+      await db.store.update({
+        where: { id: rootStore.id },
+        data: { ownerUserId: userId },
+      });
+    }
+  }
+
+  // If user owns an active store (ROOT or AGENT), redirect them to agent portal dashboard immediately
+  const store = await db.store.findFirst({
+    where: { ownerUserId: userId, status: "ACTIVE" },
+  });
+
+  if (store) {
+    redirect("/agent/dashboard");
+  }
 
   // Fetch recent orders
   const orders = await db.order.findMany({

@@ -105,7 +105,7 @@ export default async function ShopFrontPage({ params }: Props) {
         <div className="flex items-center gap-4">
           <Link
             href={`/shop/${storeSlug}/become-a-reseller`}
-            className="text-xs font-bold text-slate-400 hover:text-white transition"
+            className="text-xs font-bold px-4 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white transition active:scale-[0.98] shadow-md shadow-emerald-600/10"
           >
             Become a Reseller
           </Link>
@@ -212,13 +212,34 @@ export default async function ShopFrontPage({ params }: Props) {
       </section>
 
       {/* Footer */}
-      <footer className="border-t border-slate-900 bg-slate-950 py-10 px-4 text-slate-500 font-medium">
-        <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-6">
-          <span className="text-xs">{footerText}</span>
-          <div className="flex gap-6 text-xs text-slate-450">
-            {store.supportEmail && <span>Email: {store.supportEmail}</span>}
-            {store.contactPhone && <span>Support: {store.contactPhone}</span>}
+      <footer className="border-t border-slate-900 bg-slate-950 py-12 px-4 sm:px-6 lg:px-8 text-slate-500 font-medium">
+        <div className="max-w-7xl mx-auto grid grid-cols-1 md:grid-cols-3 gap-8 pb-8 border-b border-slate-900">
+          <div>
+            <h4 className="text-white text-xs font-bold uppercase tracking-wider mb-3">About Us</h4>
+            <span className="text-xs leading-relaxed block">{footerText}</span>
           </div>
+          <div>
+            <h4 className="text-white text-xs font-bold uppercase tracking-wider mb-3">Contact Support</h4>
+            <div className="space-y-2 text-xs">
+              {store.supportEmail && <p className="block">Email: <span className="text-slate-450">{store.supportEmail}</span></p>}
+              {store.contactPhone && <p className="block">Phone: <span className="text-slate-450">{store.contactPhone}</span></p>}
+            </div>
+          </div>
+          <div>
+            <h4 className="text-white text-xs font-bold uppercase tracking-wider mb-3">Sell With Us</h4>
+            <div className="space-y-2 text-xs">
+              <Link href={`/shop/${storeSlug}/become-a-reseller`} className="block text-slate-400 hover:text-emerald-400 transition">
+                Become a Reseller
+              </Link>
+              <Link href="/dashboard" className="block text-slate-400 hover:text-emerald-400 transition">
+                Reseller Login
+              </Link>
+            </div>
+          </div>
+        </div>
+        <div className="max-w-7xl mx-auto pt-8 flex flex-col sm:flex-row justify-between items-center gap-4 text-[10px]">
+          <span>&copy; 2026 {displayName}. All rights reserved.</span>
+          <span className="text-slate-650">White-label authorized mobile distribution node.</span>
         </div>
       </footer>
     </div>

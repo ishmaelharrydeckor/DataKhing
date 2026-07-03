@@ -3,6 +3,7 @@ import { authOptions } from "@/lib/auth";
 import { db } from "@/lib/db";
 import { redirect } from "next/navigation";
 import PricingGrid from "./PricingGrid";
+import { resolveActiveStore } from "@/lib/resolve-store";
 
 export const revalidate = 0;
 
@@ -13,9 +14,7 @@ export default async function PricingDashboardPage() {
   }
   const userId = (session.user as any).id;
 
-  const currentStore = await db.store.findFirst({
-    where: { ownerUserId: userId },
-  });
+  const currentStore = await resolveActiveStore(userId);
 
   if (!currentStore) {
     return (

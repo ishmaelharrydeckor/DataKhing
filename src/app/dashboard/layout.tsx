@@ -3,8 +3,10 @@ import { authOptions } from "@/lib/auth";
 import { redirect } from "next/navigation";
 import { formatPesewas, SITE_CONFIG } from "@/lib/site-config";
 import Link from "next/link";
-import { Wallet, History, Users, Settings, User, Sliders, Palette, Landmark, FileCheck } from "lucide-react";
+import { Wallet, History, Users, Settings, User, Sliders, Palette, Landmark, FileCheck, LayoutGrid } from "lucide-react";
 import { db } from "@/lib/db";
+import { resolveActiveStore } from "@/lib/resolve-store";
+import StoreSwitcher from "@/components/StoreSwitcher";
 
 export default async function DashboardLayout({ children }: { children: React.ReactNode }) {
   const session = await getServerSession(authOptions);
@@ -21,6 +23,27 @@ export default async function DashboardLayout({ children }: { children: React.Re
   if (!dbUser) {
     redirect("/auth/signin");
   }
+
+  // Self-healing: if admin logged in does not own the ROOT store, fix ownership
+  if (dbUser.role === "ADMIN") {
+    const rootStore = await db.store.findFirst({
+      where: { storeType: "ROOT" },
+    });
+    if (rootStore && rootStore.ownerUserId !== userId) {
+      await db.store.update({
+        where: { id: rootStore.id },
+        data: { ownerUserId: userId },
+      });
+    }
+  }
+
+  // Fetch active store context and all owned stores for switcher
+  const activeStore = await resolveActiveStore(userId);
+  const ownedStores = await db.store.findMany({
+    where: { ownerUserId: userId },
+    select: { id: true, name: true, slug: true },
+    orderBy: { createdAt: "asc" },
+  });
 
   const isResellerOrAdmin = dbUser.role === "AGENT" || dbUser.role === "ADMIN";
 
@@ -50,7 +73,10 @@ export default async function DashboardLayout({ children }: { children: React.Re
             </div>
           </div>
 
-          <div className="flex gap-4">
+          <div className="flex gap-4 items-center">
+            {activeStore && (
+              <StoreSwitcher stores={ownedStores} activeStoreId={activeStore.id} />
+            )}
             <div className="bg-slate-950 border border-slate-800 rounded-2xl p-4 min-w-[120px]">
               <span className="text-slate-500 text-[10px] uppercase font-bold block mb-1">Wallet</span>
               <span className="text-lg font-bold text-emerald-400">{formatPesewas(dbUser.walletBalance)}</span>
@@ -81,6 +107,13 @@ export default async function DashboardLayout({ children }: { children: React.Re
             <Users className="w-4 h-4 text-slate-400" />
             Referrals
           </Link>
+          <Link
+            href="/dashboard/my-stores"
+            className="flex items-center gap-2 py-3 px-5 rounded-xl text-sm font-semibold hover:bg-slate-900 transition text-slate-300 active:bg-slate-850"
+          >
+            <LayoutGrid className="w-4 h-4 text-slate-400" />
+            My Stores
+          </Link>
 
           {isResellerOrAdmin && (
             <>
@@ -100,6 +133,13 @@ export default async function DashboardLayout({ children }: { children: React.Re
               </Link>
               <Link
                 href="/dashboard/agents"
+                className="flex items-center gap-2 py-3 px-5 rounded-xl text-sm font-semibold hover:bg-slate-900 transition text-indigo-400 active:bg-slate-850"
+              >
+                <Users className="w-4 h-4 text-indigo-400" />
+                My Agents
+              </Link>
+              <Link
+                href="/dashboard/sub-agents"
                 className="flex items-center gap-2 py-3 px-5 rounded-xl text-sm font-semibold hover:bg-slate-900 transition text-indigo-400 active:bg-slate-850"
               >
                 <Users className="w-4 h-4 text-indigo-400" />
