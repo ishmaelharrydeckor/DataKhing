@@ -31,12 +31,5 @@ export async function resolveActiveStore(userId: string) {
   // 3. Fallback: First owned store (Primary store context)
   const defaultStore = ownedStores[0];
 
-  // Self-heal/set cookie context to match fallback
-  cookieStore.set("active_store_id", defaultStore.id, {
-    path: "/",
-    maxAge: 60 * 60 * 24 * 365,
-    httpOnly: false,
-  });
-
   return defaultStore;
 }
