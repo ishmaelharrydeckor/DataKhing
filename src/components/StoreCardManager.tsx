@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { switchActiveStoreAction } from "@/app/actions/multi-store";
 import { CheckCircle2, AlertCircle, Play, Bookmark } from "lucide-react";
+import Link from "next/link";
 
 interface SerializedStore {
   id: string;
@@ -89,21 +90,32 @@ export default function StoreCardManager({
         </p>
       </div>
 
-      <div className="flex items-center justify-between mt-4 pt-4 border-t border-slate-950">
+      <div className="flex items-center justify-between mt-4 pt-4 border-t border-slate-950 gap-2">
         <div>{getStatusBadge(store.status)}</div>
         
-        <button
-          onClick={handleSwitch}
-          disabled={isActive || loading}
-          className={`flex items-center gap-1.5 px-4 py-2 rounded-xl text-xs font-bold transition active:scale-[0.98] ${
-            isActive
-              ? "bg-slate-950 text-slate-500 cursor-not-allowed border border-slate-900"
-              : "bg-indigo-600 hover:bg-indigo-500 text-white shadow-md shadow-indigo-600/10 cursor-pointer"
-          }`}
-        >
-          <Play className="w-3 h-3" />
-          {loading ? "Switching..." : isActive ? "Current context" : "Manage"}
-        </button>
+        {isActive ? (
+          <div className="flex items-center gap-2">
+            <span className="px-2.5 py-1.5 bg-slate-950 text-slate-500 border border-slate-900 rounded-xl text-[10px] font-bold cursor-default select-none">
+              Currently Active
+            </span>
+            <Link
+              href="/agent/dashboard"
+              className="flex items-center gap-1 px-3 py-1.5 bg-indigo-600 hover:bg-indigo-500 text-white shadow-md shadow-indigo-600/10 rounded-xl text-[10px] font-bold transition active:scale-[0.98] cursor-pointer"
+            >
+              <Play className="w-3 h-3" />
+              Go to Dashboard
+            </Link>
+          </div>
+        ) : (
+          <button
+            onClick={handleSwitch}
+            disabled={loading}
+            className="flex items-center gap-1.5 px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white shadow-md shadow-indigo-600/10 rounded-xl text-xs font-bold transition active:scale-[0.98] cursor-pointer"
+          >
+            <Play className="w-3 h-3" />
+            {loading ? "Switching..." : "Manage"}
+          </button>
+        )}
       </div>
     </div>
   );
