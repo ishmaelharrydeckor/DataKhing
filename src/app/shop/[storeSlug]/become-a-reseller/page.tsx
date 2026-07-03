@@ -3,14 +3,30 @@ import { notFound } from "next/navigation";
 import BecomeResellerForm from "./BecomeResellerForm";
 import Link from "next/link";
 import { ArrowLeft, Briefcase } from "lucide-react";
+import type { Metadata } from "next";
 
 export const revalidate = 0;
 
-export default async function BecomeResellerPage({
-  params,
-}: {
+interface Props {
   params: Promise<{ storeSlug: string }>;
-}) {
+}
+
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
+  const resolvedParams = await params;
+  const store = await db.store.findUnique({
+    where: { slug: resolvedParams.storeSlug },
+  });
+  
+  if (!store) return {};
+  
+  const displayName = store.displayName || store.name;
+  return {
+    title: `Become a Reseller under ${displayName} | Agent Application`,
+    description: `Enroll to become a reseller agent under ${displayName} and manage your own custom mobile data bundle storefront.`,
+  };
+}
+
+export default async function BecomeResellerPage({ params }: Props) {
   const resolvedParams = await params;
   const storeSlug = resolvedParams.storeSlug;
 

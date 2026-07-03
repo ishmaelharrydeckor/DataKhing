@@ -13,6 +13,10 @@ async function main() {
   await prisma.walletTransaction.deleteMany({});
   await prisma.order.deleteMany({});
   await prisma.bundle.deleteMany({});
+  await prisma.storePricing.deleteMany({});
+  await prisma.ledger.deleteMany({});
+  await prisma.withdrawal.deleteMany({});
+  await prisma.store.deleteMany({});
   await prisma.user.deleteMany({});
 
   // Hash passwords
@@ -59,6 +63,22 @@ async function main() {
 
   console.log("Users created:", { admin: admin.email, agent: agent.email, customer: customer.email });
 
+  // Seed ROOT Store for admin user
+  const rootStore = await prisma.store.create({
+    data: {
+      ownerUserId: admin.id,
+      parentStoreId: null,
+      slug: "root",
+      name: "DataKhing Root Store",
+      status: "ACTIVE",
+      storeType: "ROOT",
+      displayName: "DataKhing Root",
+      ancestorPath: "root",
+    },
+  });
+
+  console.log("ROOT Store seeded:", rootStore.slug);
+
   // Create Data Bundles
   const bundlesData = [
     // MTN Bundles
@@ -82,12 +102,22 @@ async function main() {
   ];
 
   for (const b of bundlesData) {
-    await prisma.bundle.create({
+    const bundle = await prisma.bundle.create({
       data: b,
+    });
+
+    // Seed initial Root StorePricing mappings
+    await prisma.storePricing.create({
+      data: {
+        storeId: rootStore.id,
+        bundleId: bundle.id,
+        priceForCustomersPesewas: b.sellPricePesewas,
+        priceForSubAgentsPesewas: b.agentPricePesewas,
+      },
     });
   }
 
-  console.log(`Successfully seeded ${bundlesData.length} data bundles.`);
+  console.log(`Successfully seeded ${bundlesData.length} data bundles and root pricing configurations.`);
 }
 
 main()

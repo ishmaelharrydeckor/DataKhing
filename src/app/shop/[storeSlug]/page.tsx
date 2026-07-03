@@ -3,14 +3,31 @@ import BuyWidget from "@/components/BuyWidget";
 import { notFound } from "next/navigation";
 import { Zap, ShieldCheck, HeartHandshake, Star } from "lucide-react";
 import Link from "next/link";
+import type { Metadata } from "next";
 
 export const revalidate = 0;
 
-export default async function ShopFrontPage({
-  params,
-}: {
+interface Props {
   params: Promise<{ storeSlug: string }>;
-}) {
+}
+
+// Generate dynamic store-specific tab header title and tags
+export async function generateMetadata({ params }: Props): Promise<Metadata> {
+  const resolvedParams = await params;
+  const store = await db.store.findUnique({
+    where: { slug: resolvedParams.storeSlug },
+  });
+  
+  if (!store) return {};
+  
+  const displayName = store.displayName || store.name;
+  return {
+    title: `${displayName} | Premium Mobile Data Bundles`,
+    description: `Purchase instant cheap MTN, Telecel, and AirtelTigo bundles directly via ${displayName}.`,
+  };
+}
+
+export default async function ShopFrontPage({ params }: Props) {
   const resolvedParams = await params;
   const storeSlug = resolvedParams.storeSlug;
 
@@ -126,6 +143,31 @@ export default async function ShopFrontPage({
         <BuyWidget initialBundles={bundlesToUse} />
       </section>
 
+      {/* Hero-like Promo Area for Become-a-Reseller */}
+      <section className="py-16 border-t border-slate-900 bg-slate-900/30">
+        <div className="max-w-4xl mx-auto px-4 text-center">
+          <h2 className="text-2xl font-extrabold text-white">Start Your Own Mobile Data Business</h2>
+          <p className="text-slate-400 text-sm mt-2 max-w-lg mx-auto">
+            Partner with {displayName} today! Apply for a reseller sub-store, configure your own price markup tiers, and keep 100% of the margins.
+          </p>
+          <div className="mt-6 flex flex-wrap justify-center gap-4">
+            <Link
+              href={`/shop/${storeSlug}/become-a-reseller`}
+              className="px-8 py-3.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-2xl text-sm transition shadow-lg shadow-indigo-600/10 active:scale-[0.98]"
+              style={{ backgroundColor: primaryColor }}
+            >
+              Become a Reseller
+            </Link>
+            <Link
+              href="/auth/signup"
+              className="px-8 py-3.5 bg-slate-900 border border-slate-800 text-slate-300 hover:text-white font-bold rounded-2xl text-sm transition"
+            >
+              Customer Signup
+            </Link>
+          </div>
+        </div>
+      </section>
+
       {/* Trust Signals */}
       <section className="py-16 bg-slate-900/50 border-t border-slate-900">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
@@ -170,8 +212,14 @@ export default async function ShopFrontPage({
       </section>
 
       {/* Footer */}
-      <footer className="border-t border-slate-900 bg-slate-950 py-8 px-4 text-center text-xs text-slate-500 font-medium">
-        {footerText}
+      <footer className="border-t border-slate-900 bg-slate-950 py-10 px-4 text-slate-500 font-medium">
+        <div className="max-w-7xl mx-auto flex flex-col md:flex-row justify-between items-center gap-6">
+          <span className="text-xs">{footerText}</span>
+          <div className="flex gap-6 text-xs text-slate-450">
+            {store.supportEmail && <span>Email: {store.supportEmail}</span>}
+            {store.contactPhone && <span>Support: {store.contactPhone}</span>}
+          </div>
+        </div>
       </footer>
     </div>
   );

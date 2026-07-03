@@ -8,7 +8,7 @@ import { Award, Briefcase, CheckCircle2, ShieldAlert, ArrowLeft } from "lucide-r
 import Link from "next/link";
 
 export default function AgentApplyPage() {
-  const { data: session, update } = useSession();
+  const { data: session } = useSession();
   const router = useRouter();
 
   const [businessName, setBusinessName] = useState("");
@@ -19,7 +19,8 @@ export default function AgentApplyPage() {
   const role = (session?.user as any)?.role;
 
   useEffect(() => {
-    if (role === "AGENT") {
+    // If the user already is an AGENT or ADMIN, redirect them directly to the portal dashboard
+    if (role === "AGENT" || role === "ADMIN") {
       router.push("/agent/dashboard");
     }
   }, [role, router]);

@@ -21,7 +21,8 @@ interface MappedLedger {
 
 export default async function AgentDashboardPage() {
   const session = await getServerSession(authOptions);
-  if (!session?.user || (session.user as any).role !== "AGENT") {
+  const role = session?.user ? (session.user as any).role : null;
+  if (!session?.user || (role !== "AGENT" && role !== "ADMIN")) {
     redirect("/agent/apply");
   }
 

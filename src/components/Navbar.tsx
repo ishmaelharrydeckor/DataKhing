@@ -3,37 +3,73 @@
 import Link from "next/link";
 import { useSession, signOut } from "next-auth/react";
 import { SITE_CONFIG, formatPesewas } from "@/lib/site-config";
-import { User, Wallet, LogOut, LayoutDashboard, Settings, Menu, X, ShoppingBag } from "lucide-react";
-import { useState } from "react";
+import { User, Wallet, LogOut, LayoutDashboard, Settings, Menu, X } from "lucide-react";
+import { useState, useEffect } from "react";
+import { useParams } from "next/navigation";
 
 export default function Navbar() {
   const { data: session } = useSession();
+  const params = useParams();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
+  const [storeBranding, setStoreBranding] = useState<{ displayName: string; primaryColor: string } | null>(null);
 
   const walletBalance = (session?.user as any)?.walletBalance ?? 0;
   const role = (session?.user as any)?.role || "CUSTOMER";
+
+  const storeSlug = params?.storeSlug as string | undefined;
+
+  // Dynamically resolve store name if on a sub-agent route to prevent white-label leaks in navigation header
+  useEffect(() => {
+    if (storeSlug) {
+      fetch(`/api/store-info?slug=${storeSlug}`)
+        .then((res) => res.json())
+        .then((data) => {
+          if (data?.success) {
+            setStoreBranding({
+              displayName: data.displayName || data.name,
+              primaryColor: data.primaryColor || "#4f46e5",
+            });
+          }
+        })
+        .catch(() => {});
+    } else {
+      setStoreBranding(null);
+    }
+  }, [storeSlug]);
+
+  const brandName = storeBranding ? storeBranding.displayName : SITE_CONFIG.SITE_NAME;
+  const brandColor = storeBranding ? storeBranding.primaryColor : "#4f46e5";
+  const homePath = storeSlug ? `/shop/${storeSlug}` : "/";
+  const becomeResellerPath = storeSlug ? `/shop/${storeSlug}/become-a-reseller` : "/agent/apply";
 
   return (
     <header className="sticky top-0 z-50 bg-slate-900/80 backdrop-blur-md border-b border-slate-800 text-slate-100">
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
         <div className="flex justify-between h-16 items-center">
           {/* Logo & Name */}
-          <Link href="/" className="flex items-center gap-2 group">
-            <div className="w-9 h-9 rounded-xl bg-indigo-600 flex items-center justify-center font-bold text-lg text-white shadow-lg shadow-indigo-600/30 group-hover:scale-105 transition-transform">
-              D
+          <Link href={homePath} className="flex items-center gap-2 group">
+            <div
+              className="w-9 h-9 rounded-xl flex items-center justify-center font-bold text-lg text-white shadow-lg transition-transform group-hover:scale-105"
+              style={{ backgroundColor: brandColor }}
+            >
+              {brandName.charAt(0).toUpperCase()}
             </div>
             <span className="font-extrabold text-xl tracking-tight text-white group-hover:text-indigo-400 transition-colors">
-              {SITE_CONFIG.SITE_NAME}
+              {brandName}
             </span>
           </Link>
 
           {/* Desktop Navigation */}
           <nav className="hidden md:flex items-center gap-6 text-sm font-medium">
-            <Link href="/" className="text-slate-300 hover:text-white transition-colors">
+            <Link href={homePath} className="text-slate-300 hover:text-white transition-colors">
               Buy Data
             </Link>
             
-            {session ? (
+            <Link href={becomeResellerPath} className="text-indigo-400 hover:text-indigo-300 transition-colors font-bold">
+              Become a Reseller
+            </Link>
+
+            {session && (
               <>
                 <Link href="/dashboard" className="text-slate-300 hover:text-white transition-colors flex items-center gap-1">
                   <LayoutDashboard className="w-4 h-4" />
@@ -50,16 +86,7 @@ export default function Navbar() {
                     Agent Portal
                   </Link>
                 )}
-                {role === "CUSTOMER" && (
-                  <Link href="/agent/apply" className="text-slate-400 hover:text-white transition-colors">
-                    Become Agent
-                  </Link>
-                )}
               </>
-            ) : (
-              <Link href="/agent/apply" className="text-slate-400 hover:text-white transition-colors">
-                Agent Program
-              </Link>
             )}
           </nav>
 
@@ -82,7 +109,7 @@ export default function Navbar() {
                     {session.user?.name || session.user?.email}
                   </span>
                   <button
-                    onClick={() => signOut({ callbackUrl: "/" })}
+                    onClick={() => signOut({ callbackUrl: homePath })}
                     className="p-2 rounded-xl bg-slate-800 hover:bg-rose-950/40 hover:text-rose-400 border border-slate-700/80 transition cursor-pointer"
                     title="Log Out"
                   >
@@ -133,11 +160,18 @@ export default function Navbar() {
       {mobileMenuOpen && (
         <div className="md:hidden bg-slate-900 border-b border-slate-800 px-4 py-4 space-y-3">
           <Link
-            href="/"
+            href={homePath}
             onClick={() => setMobileMenuOpen(false)}
             className="block py-2 text-slate-300 hover:text-white text-sm"
           >
             Buy Data
+          </Link>
+          <Link
+            href={becomeResellerPath}
+            onClick={() => setMobileMenuOpen(false)}
+            className="block py-2 text-indigo-400 hover:text-indigo-300 text-sm font-bold animate-pulse"
+          >
+            Become a Reseller
           </Link>
           {session ? (
             <>
@@ -173,21 +207,12 @@ export default function Navbar() {
                   Agent Portal
                 </Link>
               )}
-              {role === "CUSTOMER" && (
-                <Link
-                  href="/agent/apply"
-                  onClick={() => setMobileMenuOpen(false)}
-                  className="block py-2 text-slate-300 hover:text-white text-sm"
-                >
-                  Become Agent
-                </Link>
-              )}
               <div className="border-t border-slate-800 pt-3 flex justify-between items-center text-xs text-slate-400">
                 <span className="truncate">{session.user?.name || session.user?.email}</span>
                 <button
                   onClick={() => {
                     setMobileMenuOpen(false);
-                    signOut({ callbackUrl: "/" });
+                    signOut({ callbackUrl: homePath });
                   }}
                   className="flex items-center gap-1 py-1 px-2.5 rounded-lg bg-rose-950/20 text-rose-400 border border-rose-900/30"
                 >

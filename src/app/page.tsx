@@ -2,6 +2,7 @@ import { db } from "@/lib/db";
 import BuyWidget from "@/components/BuyWidget";
 import { SITE_CONFIG } from "@/lib/site-config";
 import { Zap, ShieldCheck, HeartHandshake, Star } from "lucide-react";
+import Link from "next/link";
 
 // Disable server cache so bundle list updates immediately on admin price changes
 export const revalidate = 0;
@@ -39,6 +40,30 @@ export default async function LandingPage() {
       {/* Main Buy Widget Section */}
       <section className="pb-24 px-4 relative z-10 bg-slate-950">
         <BuyWidget initialBundles={bundles} />
+      </section>
+
+      {/* Hero-like Promo Area for Become-a-Reseller */}
+      <section className="py-16 border-t border-slate-900 bg-slate-900/30">
+        <div className="max-w-4xl mx-auto px-4 text-center">
+          <h2 className="text-2xl font-extrabold text-white">Start Your Own Mobile Data Business</h2>
+          <p className="text-slate-400 text-sm mt-2 max-w-lg mx-auto">
+            Partner with {SITE_CONFIG.SITE_NAME} today! Apply for a reseller storefront, configure your own custom markup tiers, and keep 100% of the margins.
+          </p>
+          <div className="mt-6 flex flex-wrap justify-center gap-4">
+            <Link
+              href="/agent/apply"
+              className="px-8 py-3.5 bg-indigo-600 hover:bg-indigo-500 text-white font-bold rounded-2xl text-sm transition shadow-lg shadow-indigo-600/10 active:scale-[0.98]"
+            >
+              Become a Reseller
+            </Link>
+            <Link
+              href="/auth/signup"
+              className="px-8 py-3.5 bg-slate-900 border border-slate-800 text-slate-300 hover:text-white font-bold rounded-2xl text-sm transition"
+            >
+              Customer Signup
+            </Link>
+          </div>
+        </div>
       </section>
 
       {/* Trust Signals */}
